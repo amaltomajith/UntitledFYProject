@@ -1,0 +1,28 @@
+{
+  "positive_examples": [
+    {
+      "task": "What is 15% of 200?",
+      "sequence": "PlannerAgent → ReasoningAgent → CriticAgent → ConcluderAgent",
+      "return": -55.772921727903885
+    }
+  ],
+  "negative_examples": [
+    {
+      "task": "A train travels 120km in 2 hours. What is its speed?",
+      "sequence": "PlannerAgent → ReasoningAgent → CriticAgent → ConcluderAgent",
+      "return": -57.873981029440884
+    },
+    {
+      "task": "If 5 workers complete a job in 8 days, how many days for 10 workers?",
+      "sequence": "PlannerAgent → ReasoningAgent → CriticAgent → ConcluderAgent",
+      "return": -72.06114844844298
+    }
+  ],
+  "episode_count": 3,
+  "best_return": -55.772921727903885,
+  "avg_return_history": [
+    -55.772921727903885,
+    -57.873981029440884,
+    -72.06114844844298
+  ]
+}

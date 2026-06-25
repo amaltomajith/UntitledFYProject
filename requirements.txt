@@ -1,0 +1,22 @@
+# Puppeteer++ — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Core LLM client ──────────────────────────────────────────────────────────
+# Groq uses OpenAI's REST format; the openai SDK works out of the box.
+openai>=1.30.0
+
+# ── Environment variable loading ─────────────────────────────────────────────
+# Reads .env file into os.environ automatically at import time.
+python-dotenv>=1.0.0
+
+# ── API / Backend (used from Step 9 onward) ──────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+
+# ── Numerical / RL (used from Step 5 onward) ─────────────────────────────────
+numpy>=1.26.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
