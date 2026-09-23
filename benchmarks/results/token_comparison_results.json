@@ -1,0 +1,719 @@
+{
+  "benchmark_run": "2026-09-23T12:01:22.005410",
+  "model_fast": "openai/gpt-oss-20b",
+  "model_quality": "openai/gpt-oss-120b",
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "Math Reasoning",
+      "category": "Arithmetic",
+      "task": "A train travels at 60 km/h. It needs to cover 210 km. There is a 30-minute stop midway. What is the total journey time? Show all working steps clearly.",
+      "expected": "4 hours",
+      "methods": {
+        "Puppeteer++": {
+          "method": "Puppeteer++",
+          "total_tokens": 2267,
+          "steps": 4,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 471
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 581
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 581
+            },
+            {
+              "step": 3,
+              "agent": "ConcluderAgent",
+              "tokens": 634
+            }
+          ],
+          "final_answer": "",
+          "success": true,
+          "elapsed_ms": 6263.0
+        },
+        "Monolithic LLM": {
+          "method": "Monolithic LLM",
+          "total_tokens": 606,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "MonolithicLLM",
+              "tokens": 606
+            }
+          ],
+          "final_answer": "**Step‑by‑step calculation**\n\n1. **Find the travelling time (without the stop).**  \n\n   \\[\n   \\text{Travel time} = \\frac{\\text{distance}}{\\text{speed}}\n   = \\frac{210\\ \\text{km}}{60\\ \\text{km/h}}\n   \\",
+          "success": true,
+          "elapsed_ms": 1669.5
+        },
+        "Fixed Multi-Agent": {
+          "method": "Fixed Multi-Agent",
+          "total_tokens": 3069,
+          "steps": 5,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 625
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 618
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 635
+            },
+            {
+              "step": 3,
+              "agent": "ValidatorAgent",
+              "tokens": 645
+            },
+            {
+              "step": 4,
+              "agent": "ConcluderAgent",
+              "tokens": 546
+            }
+          ],
+          "final_answer": "[ConcluderAgent]: **Total journey time = 4 hours**\n\n---\n\n### 1.  Split the trip into two equal legs  \nThe train stops at the *midpoint* of the 210 km route.\n\n\\[\n\\text{Distance of each leg} = \\frac{210",
+          "success": true,
+          "elapsed_ms": 7205.0
+        },
+        "Chain-of-Thought": {
+          "method": "Chain-of-Thought",
+          "total_tokens": 783,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "CoT-LLM",
+              "tokens": 783
+            }
+          ],
+          "final_answer": "**Step 1 – Understand the problem**  \nA train must travel a total distance of 210 km at a constant speed of 60 km/h.  \nDuring the trip it stops for 30 minutes (½ hour) exactly halfway through.  \nWe ne",
+          "success": true,
+          "elapsed_ms": 1825.0
+        },
+        "ReAct": {
+          "method": "ReAct",
+          "total_tokens": 1867,
+          "steps": 3,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "ReAct-Thought",
+              "tokens": 486
+            },
+            {
+              "step": 1,
+              "agent": "ReAct-Act",
+              "tokens": 819
+            },
+            {
+              "step": 2,
+              "agent": "ReAct-Observe",
+              "tokens": 562
+            }
+          ],
+          "final_answer": "**Total journey time = 4 hours**\n\n**Step‑by‑step calculation**\n\n| Step | What we need | Calculation | Result |\n|------|--------------|-------------|--------|\n| 1 | Distance to be covered | 210 km | 21",
+          "success": true,
+          "elapsed_ms": 3889.8
+        }
+      }
+    },
+    {
+      "id": "T2",
+      "name": "Logic Puzzle",
+      "category": "Deductive Reasoning",
+      "task": "A bat and a ball together cost $1.10. The bat costs exactly $1.00 more than the ball. How much does the ball cost? Explain your reasoning and verify.",
+      "expected": "$0.05",
+      "methods": {
+        "Puppeteer++": {
+          "method": "Puppeteer++",
+          "total_tokens": 2280,
+          "steps": 4,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 557
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 627
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 537
+            },
+            {
+              "step": 3,
+              "agent": "ConcluderAgent",
+              "tokens": 559
+            }
+          ],
+          "final_answer": "",
+          "success": true,
+          "elapsed_ms": 4563.5
+        },
+        "Monolithic LLM": {
+          "method": "Monolithic LLM",
+          "total_tokens": 738,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "MonolithicLLM",
+              "tokens": 738
+            }
+          ],
+          "final_answer": "**Step‑by‑step solution**\n\n1. **Define the unknown**  \n   Let the cost of the ball be \\(x\\) dollars.\n\n2. **Express the bat’s price in terms of \\(x\\)**  \n   The bat costs exactly \\$1.00 more than the b",
+          "success": true,
+          "elapsed_ms": 1832.2
+        },
+        "Fixed Multi-Agent": {
+          "method": "Fixed Multi-Agent",
+          "total_tokens": 3249,
+          "steps": 5,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 635
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 624
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 662
+            },
+            {
+              "step": 3,
+              "agent": "ValidatorAgent",
+              "tokens": 715
+            },
+            {
+              "step": 4,
+              "agent": "ConcluderAgent",
+              "tokens": 613
+            }
+          ],
+          "final_answer": "[ConcluderAgent]: **Answer:**  \nThe ball costs **$0.05** (five cents).\n\n---\n\n### Why this is the correct answer\n\n1. **Set up the equations**  \n   Let  \n   * \\(b\\) = price of the ball (in dollars)  \n  ",
+          "success": true,
+          "elapsed_ms": 7675.9
+        },
+        "Chain-of-Thought": {
+          "method": "Chain-of-Thought",
+          "total_tokens": 769,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "CoT-LLM",
+              "tokens": 769
+            }
+          ],
+          "final_answer": "**Step 1 – Understand the problem**  \nWe have two items, a bat and a ball.  \n* Their combined price is **$1.10**.  \n* The bat costs **exactly $1.00 more** than the ball.\n\nWe are asked for the price of",
+          "success": true,
+          "elapsed_ms": 1588.4
+        },
+        "ReAct": {
+          "method": "ReAct",
+          "total_tokens": 1869,
+          "steps": 3,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "ReAct-Thought",
+              "tokens": 644
+            },
+            {
+              "step": 1,
+              "agent": "ReAct-Act",
+              "tokens": 651
+            },
+            {
+              "step": 2,
+              "agent": "ReAct-Observe",
+              "tokens": 574
+            }
+          ],
+          "final_answer": "**Answer:** The ball costs **$0.05** (5 ¢).\n\n**Reasoning**\n\nLet  \n\n- \\(b\\) = price of the ball (in dollars)  \n- \\(t\\) = price of the bat (in dollars)\n\nThe problem gives two facts:\n\n1. The bat and the ",
+          "success": true,
+          "elapsed_ms": 3297.7
+        }
+      }
+    },
+    {
+      "id": "T3",
+      "name": "Rate Problem",
+      "category": "Proportional Reasoning",
+      "task": "If 5 machines make 5 widgets in 5 minutes, how long would it take 100 machines to make 100 widgets? Show step-by-step reasoning and explain why the answer seems counterintuitive.",
+      "expected": "5 minutes",
+      "methods": {
+        "Puppeteer++": {
+          "method": "Puppeteer++",
+          "total_tokens": 2421,
+          "steps": 4,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 561
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 757
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 573
+            },
+            {
+              "step": 3,
+              "agent": "ConcluderAgent",
+              "tokens": 530
+            }
+          ],
+          "final_answer": "",
+          "success": true,
+          "elapsed_ms": 4956.1
+        },
+        "Monolithic LLM": {
+          "method": "Monolithic LLM",
+          "total_tokens": 1237,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "MonolithicLLM",
+              "tokens": 1237
+            }
+          ],
+          "final_answer": "**Step‑by‑step reasoning**\n\n1. **Interpret the given information**  \n   - 5 machines produce 5 widgets in 5 minutes.  \n   - All machines are identical and work independently at the same constant rate.",
+          "success": true,
+          "elapsed_ms": 2735.7
+        },
+        "Fixed Multi-Agent": {
+          "method": "Fixed Multi-Agent",
+          "total_tokens": 3174,
+          "steps": 5,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 639
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 839
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 539
+            },
+            {
+              "step": 3,
+              "agent": "ValidatorAgent",
+              "tokens": 601
+            },
+            {
+              "step": 4,
+              "agent": "ConcluderAgent",
+              "tokens": 556
+            }
+          ],
+          "final_answer": "[ConcluderAgent]: **Step‑by‑step reasoning**\n\n| Step | What we’re doing | Why it matters |\n|------|------------------|----------------|\n| 1 | **Read the fact** – “5 machines make 5 widgets in 5 minute",
+          "success": true,
+          "elapsed_ms": 18276.7
+        },
+        "Chain-of-Thought": {
+          "method": "Chain-of-Thought",
+          "total_tokens": 1137,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "CoT-LLM",
+              "tokens": 1137
+            }
+          ],
+          "final_answer": "**Step‑by‑step reasoning**\n\n| Step | What we do | Why it matters |\n|------|------------|----------------|\n| 1️⃣ | **Read the statement carefully**: “5 machines make 5 widgets in 5 minutes.” | This tel",
+          "success": true,
+          "elapsed_ms": 2405.4
+        },
+        "ReAct": {
+          "method": "ReAct",
+          "total_tokens": 2017,
+          "steps": 3,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "ReAct-Thought",
+              "tokens": 648
+            },
+            {
+              "step": 1,
+              "agent": "ReAct-Act",
+              "tokens": 753
+            },
+            {
+              "step": 2,
+              "agent": "ReAct-Observe",
+              "tokens": 616
+            }
+          ],
+          "final_answer": "**Answer: 5 minutes**\n\n---\n\n### Step‑by‑step reasoning\n\n1. **Interpret the given fact**  \n   - 5 machines → 5 widgets in 5 minutes.\n\n2. **Determine the rate of a single machine**  \n   - Total widgets ",
+          "success": true,
+          "elapsed_ms": 7918.7
+        }
+      }
+    },
+    {
+      "id": "T4",
+      "name": "Code Analysis",
+      "category": "Technical Reasoning",
+      "task": "A function doubles every element in a list and then filters out elements greater than 10. If the input is [1, 3, 5, 7, 9], what is the output? Show your reasoning step by step.",
+      "expected": "[2, 6, 10]",
+      "methods": {
+        "Puppeteer++": {
+          "method": "Puppeteer++",
+          "total_tokens": 2242,
+          "steps": 4,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 568
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 613
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 613
+            },
+            {
+              "step": 3,
+              "agent": "ConcluderAgent",
+              "tokens": 448
+            }
+          ],
+          "final_answer": "",
+          "success": true,
+          "elapsed_ms": 13393.1
+        },
+        "Monolithic LLM": {
+          "method": "Monolithic LLM",
+          "total_tokens": 577,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "MonolithicLLM",
+              "tokens": 577
+            }
+          ],
+          "final_answer": "**Step‑by‑step reasoning**\n\n1. **Start with the original list**  \n   \\[\n   [1,\\;3,\\;5,\\;7,\\;9]\n   \\]\n\n2. **Double every element** – multiply each number by 2  \n\n   \\[\n   \\begin{aligned}\n   1 \\times 2 ",
+          "success": true,
+          "elapsed_ms": 1394.0
+        },
+        "Fixed Multi-Agent": {
+          "method": "Fixed Multi-Agent",
+          "total_tokens": 3003,
+          "steps": 5,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 581
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 475
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 665
+            },
+            {
+              "step": 3,
+              "agent": "ValidatorAgent",
+              "tokens": 656
+            },
+            {
+              "step": 4,
+              "agent": "ConcluderAgent",
+              "tokens": 626
+            }
+          ],
+          "final_answer": "[ConcluderAgent]: **Step‑by‑step reasoning**\n\n1. **Double each element**  \n   Multiply every number in the input list by 2.  \n   \\[\n   [1, 3, 5, 7, 9] \\;\\xrightarrow{\\times 2}\\; [2, 6, 10, 14, 18]\n   ",
+          "success": true,
+          "elapsed_ms": 17010.1
+        },
+        "Chain-of-Thought": {
+          "method": "Chain-of-Thought",
+          "total_tokens": 678,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "CoT-LLM",
+              "tokens": 678
+            }
+          ],
+          "final_answer": "**Step‑by‑step reasoning**\n\n**Step 1 – Understand the problem**  \nWe have a list of numbers. The required processing is:  \n\n1. **Double** every element (multiply each by 2).  \n2. **Filter** the result",
+          "success": true,
+          "elapsed_ms": 1520.6
+        },
+        "ReAct": {
+          "method": "ReAct",
+          "total_tokens": 1808,
+          "steps": 3,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "ReAct-Thought",
+              "tokens": 543
+            },
+            {
+              "step": 1,
+              "agent": "ReAct-Act",
+              "tokens": 639
+            },
+            {
+              "step": 2,
+              "agent": "ReAct-Observe",
+              "tokens": 626
+            }
+          ],
+          "final_answer": "**Step‑by‑step reasoning**\n\n1. **Start with the input list**  \n   \\[\n   [1,\\;3,\\;5,\\;7,\\;9]\n   \\]\n\n2. **Double each element**  \n   Multiply every element by 2:  \n   \\[\n   1\\times2 = 2,\\quad\n   3\\times",
+          "success": true,
+          "elapsed_ms": 8666.0
+        }
+      }
+    },
+    {
+      "id": "T5",
+      "name": "Multi-step Planning",
+      "category": "Planning",
+      "task": "You have a 3-litre jug and a 5-litre jug. You need exactly 4 litres of water. Describe the minimum number of steps needed and list each step.",
+      "expected": "6 steps",
+      "methods": {
+        "Puppeteer++": {
+          "method": "Puppeteer++",
+          "total_tokens": 2263,
+          "steps": 4,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 556
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 761
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 495
+            },
+            {
+              "step": 3,
+              "agent": "ConcluderAgent",
+              "tokens": 451
+            }
+          ],
+          "final_answer": "",
+          "success": true,
+          "elapsed_ms": 9830.2
+        },
+        "Monolithic LLM": {
+          "method": "Monolithic LLM",
+          "total_tokens": 1889,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "MonolithicLLM",
+              "tokens": 1889
+            }
+          ],
+          "final_answer": "**Answer – 6 steps (the minimum)**  \n\n| Step | Action | State after the step (3‑L jug , 5‑L jug) |\n|------|--------|------------------------------------------|\n| 1 | **Fill the 5‑L jug** | (0 L , 5 L)",
+          "success": true,
+          "elapsed_ms": 4204.4
+        },
+        "Fixed Multi-Agent": {
+          "method": "Fixed Multi-Agent",
+          "total_tokens": 3058,
+          "steps": 5,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "PlannerAgent",
+              "tokens": 634
+            },
+            {
+              "step": 1,
+              "agent": "ReasoningAgent",
+              "tokens": 686
+            },
+            {
+              "step": 2,
+              "agent": "CriticAgent",
+              "tokens": 606
+            },
+            {
+              "step": 3,
+              "agent": "ValidatorAgent",
+              "tokens": 615
+            },
+            {
+              "step": 4,
+              "agent": "ConcluderAgent",
+              "tokens": 517
+            }
+          ],
+          "final_answer": "[ConcluderAgent]: ",
+          "success": true,
+          "elapsed_ms": 14857.1
+        },
+        "Chain-of-Thought": {
+          "method": "Chain-of-Thought",
+          "total_tokens": 1296,
+          "steps": 1,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "CoT-LLM",
+              "tokens": 1296
+            }
+          ],
+          "final_answer": "**Minimum number of steps:** **6**  \n\n**Step‑by‑step procedure (each fill, pour, or empty counts as one step)**  \n\n| Step | Action | State after the step (5‑L jug , 3‑L jug) |\n|------|--------|-------",
+          "success": true,
+          "elapsed_ms": 2967.0
+        },
+        "ReAct": {
+          "method": "ReAct",
+          "total_tokens": 2017,
+          "steps": 3,
+          "steps_log": [
+            {
+              "step": 0,
+              "agent": "ReAct-Thought",
+              "tokens": 643
+            },
+            {
+              "step": 1,
+              "agent": "ReAct-Act",
+              "tokens": 748
+            },
+            {
+              "step": 2,
+              "agent": "ReAct-Observe",
+              "tokens": 626
+            }
+          ],
+          "final_answer": "**Minimum steps: 6**\n\n| Step | Action | Result (J3 / J5) |\n|------|--------|------------------|\n| 1 | Fill the 5‑L jug | 0 L / 5 L |\n| 2 | Pour from 5‑L into 3‑L (until 3‑L is full) | 3 L / 2 L |\n| 3 ",
+          "success": true,
+          "elapsed_ms": 9269.2
+        }
+      }
+    }
+  ],
+  "methods_summary": {
+    "Puppeteer++": {
+      "avg_tokens_per_task": 2294.6,
+      "total_tokens_all_tasks": 11473,
+      "per_task_tokens": [
+        2267,
+        2280,
+        2421,
+        2242,
+        2263
+      ],
+      "extra_tokens_vs_puppeteer": 0.0,
+      "savings_pct_vs_puppeteer": 0.0
+    },
+    "Monolithic LLM": {
+      "avg_tokens_per_task": 1009.4,
+      "total_tokens_all_tasks": 5047,
+      "per_task_tokens": [
+        606,
+        738,
+        1237,
+        577,
+        1889
+      ],
+      "extra_tokens_vs_puppeteer": -1285.2,
+      "savings_pct_vs_puppeteer": -127.3
+    },
+    "Fixed Multi-Agent": {
+      "avg_tokens_per_task": 3110.6,
+      "total_tokens_all_tasks": 15553,
+      "per_task_tokens": [
+        3069,
+        3249,
+        3174,
+        3003,
+        3058
+      ],
+      "extra_tokens_vs_puppeteer": 816.0,
+      "savings_pct_vs_puppeteer": 26.2
+    },
+    "Chain-of-Thought": {
+      "avg_tokens_per_task": 932.6,
+      "total_tokens_all_tasks": 4663,
+      "per_task_tokens": [
+        783,
+        769,
+        1137,
+        678,
+        1296
+      ],
+      "extra_tokens_vs_puppeteer": -1362.0,
+      "savings_pct_vs_puppeteer": -146.0
+    },
+    "ReAct": {
+      "avg_tokens_per_task": 1915.6,
+      "total_tokens_all_tasks": 9578,
+      "per_task_tokens": [
+        1867,
+        1869,
+        2017,
+        1808,
+        2017
+      ],
+      "extra_tokens_vs_puppeteer": -379.0,
+      "savings_pct_vs_puppeteer": -19.8
+    }
+  }
+}

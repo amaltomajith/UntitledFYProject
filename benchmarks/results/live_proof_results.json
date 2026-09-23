@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-09-04T10:05:46.100699",
+  "task": "A train travels at 60 km/h. It needs to cover 210 km. There is a 30-minute stop midway. What is the total journey time? Show all working steps clearly and state the final answer.",
+  "expected_answer": "4 hours",
+  "weighting_formula": {
+    "fast_tier_weight": 1.0,
+    "heavy_tier_weight": 6.0,
+    "fast_cost_per_m": 0.1,
+    "heavy_cost_per_m": 0.8,
+    "formula": "WeightedTokens = sum(Tokens_i * Weight_model_i)"
+  },
+  "results": {
+    "Puppeteer++": {
+      "raw_tokens": 1050,
+      "weighted_tokens": 1050.0,
+      "dollar_cost": 0.000105,
+      "latency_ms": 3026.4,
+      "steps": 3,
+      "model_distribution": "100% Fast Tier (20B)",
+      "final_answer": "text{km/h}}\n=3.5\\ \\text{h}\n\\]\n\n**Step 2 – Convert the stop time to hours**\n\n\\[\n30\\ \\text{minutes}= \\"
+    },
+    "Monolithic LLM": {
+      "raw_tokens": 527,
+      "weighted_tokens": 3162.0,
+      "dollar_cost": 0.0004216,
+      "latency_ms": 1225.3,
+      "steps": 1,
+      "model_distribution": "100% Heavy Tier (120B)",
+      "final_answer": "t{h}=4\\ \\text{hours}\n   \\]\n\n---\n\n**Final answer:** The total journey time, including the 30‑minute stop, is **4 hours**."
+    },
+    "Fixed Multi-Agent": {
+      "raw_tokens": 2378,
+      "weighted_tokens": 2378.0,
+      "dollar_cost": 0.0002378,
+      "latency_ms": 3615.3,
+      "steps": 5,
+      "model_distribution": "100% Fast Tier (20B)",
+      "final_answer": "t{ km/h}}\n   = 3.5 \\text{ h}\n   \\]\n\n2. **Add the 30‑minute stop**\n\n   \\[\n   30 \\text{ minutes} = 0.5"
+    },
+    "Chain-of-Thought": {
+      "raw_tokens": 725,
+      "weighted_tokens": 4350.0,
+      "dollar_cost": 0.00058,
+      "latency_ms": 1475.0,
+      "steps": 1,
+      "model_distribution": "100% Heavy Tier (120B)",
+      "final_answer": "es}.\n\\]\n\n---\n\n### **Final Answer**\n\nThe train’s total journey time, including the 30‑minute midway stop, is **4 hours**."
+    },
+    "ReAct": {
+      "raw_tokens": 1231,
+      "weighted_tokens": 1231.0,
+      "dollar_cost": 0.0001231,
+      "latency_ms": 1754.1,
+      "steps": 3,
+      "model_distribution": "100% Fast Tier (20B)",
+      "final_answer": "stops for 30 minutes (0.5 h).\n\n3. **Total journey time**  \n   \\[\n   \\text{Total time} = 3.5\\ \\text{"
+    }
+  }
+}
