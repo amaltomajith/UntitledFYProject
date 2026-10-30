@@ -2,16 +2,18 @@
 
 /* Design tokens: see DESIGN.md. Dark-only by design (the space scene is the brand). */
 :root {
-  --bg: #050914;
-  --bg-2: #0a1124;
-  --panel: rgba(9, 15, 34, 0.74);
-  --ink: #eef2fb;
-  --ink-2: #b4bfd6;
-  --ink-3: #8390ad;
-  --line: rgba(160, 182, 235, 0.16);
-  --accent: #2a5ff0;
-  --accent-hover: #3b6dff;
-  --accent-hi: #7aa2ff;
+  --bg: #07061a;
+  --bg-2: #0f0d2a;
+  --panel: rgba(14, 12, 38, 0.76);
+  --ink: #f0eefc;
+  --ink-2: #bdb9d8;
+  --ink-3: #8d88ad;
+  --line: rgba(180, 170, 240, 0.17);
+  --accent: #5b3df5;
+  --accent-hover: #6d52ff;
+  --accent-hi: #a99bff;
+  --on-accent: #ffffff;
+  --on-light: #0a0822;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --nav-h: 64px;
 
@@ -44,7 +46,7 @@ body {
 
 ::selection {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 :focus-visible {
@@ -79,15 +81,15 @@ body {
 
 /* ------------------------------------------------------------------ background layers */
 
-/* The blue light cone sweeping in from the right, behind the WebGL grid. */
+/* The light cone sweeping in from the right, behind the WebGL grid. */
 .cone {
   position: fixed;
   inset: 0;
   z-index: var(--z-cone);
   pointer-events: none;
   background:
-    radial-gradient(34% 62% at 100% 26%, rgba(132, 168, 255, 0.95) 0%, rgba(66, 112, 255, 0.82) 34%, rgba(38, 84, 236, 0.4) 64%, transparent 100%),
-    radial-gradient(26% 40% at 78% 0%, rgba(60, 108, 255, 0.45) 0%, transparent 100%);
+    radial-gradient(32% 60% at 100% 26%, rgba(168, 148, 255, 0.92) 0%, rgba(98, 68, 250, 0.78) 34%, rgba(64, 38, 220, 0.38) 64%, transparent 100%),
+    radial-gradient(25% 38% at 78% 0%, rgba(88, 58, 245, 0.4) 0%, transparent 100%);
   filter: blur(24px);
 }
 
@@ -112,7 +114,7 @@ body {
   inset: 0 0 auto 0;
   z-index: var(--z-nav);
   height: var(--nav-h);
-  background: linear-gradient(to bottom, rgba(3, 6, 14, 0.92), rgba(3, 6, 14, 0.55) 60%, transparent);
+  background: linear-gradient(to bottom, rgba(6, 5, 18, 0.92), rgba(6, 5, 18, 0.55) 60%, transparent);
 }
 
 .nav__inner {
@@ -139,7 +141,7 @@ body {
 .wordmark__mark {
   width: 14px;
   height: 14px;
-  background: linear-gradient(135deg, #dfe9ff, var(--accent-hi) 45%, var(--accent));
+  background: linear-gradient(135deg, #e6e0ff, var(--accent-hi) 45%, var(--accent));
   border-radius: 3px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
@@ -191,7 +193,7 @@ body {
   position: relative;
   width: 13px;
   height: 13px;
-  border: 1px solid rgba(238, 242, 251, 0.45);
+  border: 1px solid rgba(240, 238, 252, 0.45);
   transition: transform 0.45s var(--ease-out), border-color 0.3s, background-color 0.3s;
 }
 
@@ -215,7 +217,7 @@ body {
 .nav__link:focus-visible .nav__plus {
   transform: rotate(135deg);
   border-color: var(--accent-hi);
-  background: rgba(42, 95, 240, 0.3);
+  background: rgba(91, 61, 245, 0.36);
 }
 
 /* ------------------------------------------------------------------ buttons and chips */
@@ -256,7 +258,7 @@ body {
 
 .btn--primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .btn--primary:hover {
@@ -264,9 +266,9 @@ body {
 }
 
 .btn--ghost {
-  background: rgba(3, 6, 14, 0.55);
+  background: rgba(6, 5, 18, 0.55);
   color: var(--ink);
-  border-color: rgba(238, 242, 251, 0.32);
+  border-color: rgba(240, 238, 252, 0.32);
   backdrop-filter: blur(6px);
 }
 
@@ -287,13 +289,13 @@ body {
 .chip__i {
   padding: 5px 7px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .chip__t {
   padding: 5px 9px;
   background: var(--ink);
-  color: #060a16;
+  color: var(--on-light);
 }
 
 /* Hover label that follows a 3D tile ("03 CODER"). Positioned per frame by the scene. */
@@ -314,36 +316,37 @@ body {
 .tile-chip__i {
   padding: 4px 6px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .tile-chip__n {
   padding: 4px 8px;
   background: #fff;
-  color: #060a16;
+  color: var(--on-light);
 }
 
 /* ------------------------------------------------------------------ type */
 
 .display-1 {
-  font-size: clamp(3.4rem, 8.6vw, 9rem);
+  font-size: clamp(3.4rem, min(8.6vw, 17vh), 9rem);
   line-height: 0.98;
   letter-spacing: -0.045em;
   font-weight: 400;
 }
 
 .display-2 {
-  font-size: clamp(2.5rem, 6.2vw, 6.75rem);
+  font-size: clamp(2.5rem, min(6.2vw, 12.5vh), 6.75rem);
   line-height: 1.06;
   letter-spacing: -0.04em;
   font-weight: 400;
 }
 
 .display-3 {
-  font-size: clamp(2.2rem, 4.4vw, 4.25rem);
+  font-size: clamp(2.2rem, min(4.4vw, 8vh), 4.25rem);
   line-height: 1.04;
   letter-spacing: -0.035em;
   font-weight: 400;
+  text-wrap: balance;
 }
 
 .lead {
@@ -455,16 +458,25 @@ body {
 
 .about-a .sub {
   margin-top: 26px;
-  max-width: 52ch;
+  max-width: 44ch;
+  text-wrap: balance;
   font-size: 1.05rem;
   line-height: 1.6;
   color: var(--ink-2);
-  text-shadow: 0 1px 18px rgba(5, 9, 20, 0.8);
+  text-shadow: 0 1px 18px rgba(7, 6, 22, 0.8);
+}
+
+/* Phones: keep the subtext inside the tile ring. */
+@media (max-width: 767px) {
+  .motion-ok .about-a .sub {
+    max-width: 74vw;
+    font-size: 0.98rem;
+  }
 }
 
 .manifesto {
   max-width: 22ch;
-  font-size: clamp(2rem, 4vw, 4.4rem);
+  font-size: clamp(2rem, min(4vw, 8.4vh), 4.4rem);
   line-height: 1.16;
   letter-spacing: -0.035em;
 }
@@ -477,7 +489,12 @@ body {
 
 .manifesto,
 .display-2 {
-  text-shadow: 0 2px 28px rgba(5, 9, 20, 0.85);
+  text-shadow: 0 2px 28px rgba(7, 6, 22, 0.85);
+}
+
+.manifesto .block,
+.display-2 .block {
+  text-wrap: balance;
 }
 
 .manifesto .m1 {
@@ -490,7 +507,7 @@ body {
 }
 
 .motion-ok .about {
-  height: 460vh;
+  height: 340vh;
 }
 
 .motion-ok .about__stage {
@@ -523,6 +540,8 @@ body {
 
 .hl-text {
   position: relative;
+  color: var(--on-accent);
+  text-shadow: none;
 }
 
 /* Glitch type: block cursor followed by dither cells. Cells keep the glyph's width (no layout shift). */
@@ -568,7 +587,149 @@ body {
   }
 }
 
-/* ------------------------------------------------------------------ how it works (chapter 02) */
+/* ------------------------------------------------------------------ mcp (chapter 02) */
+
+.mcp__stage {
+  padding-block: clamp(72px, 12vh, 120px);
+}
+
+.mcp__inner {
+  display: grid;
+  gap: clamp(20px, 3.4vh, 36px);
+}
+
+.mcp__head {
+  display: grid;
+  justify-items: center;
+  gap: clamp(12px, 2vh, 20px);
+  text-align: center;
+}
+
+.mcp__clients {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mcp__clients li {
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.mcp__flow {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp__slot {
+  display: grid;
+  place-items: center;
+  height: clamp(96px, 15vh, 150px);
+}
+
+.mcp__arrow {
+  color: var(--accent-hi);
+}
+
+.motion-ok .mcp__arrow {
+  display: none;
+}
+
+.mcp__panel {
+  padding: clamp(14px, 1.7vw, 22px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+}
+
+.mcp__label {
+  margin-bottom: 10px;
+  font-family: var(--f-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+.mcp__code {
+  font-family: var(--f-mono);
+  font-size: clamp(0.76rem, 0.95vw, 0.92rem);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.mcp__fn {
+  color: var(--accent-hi);
+}
+
+.mcp__note {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--ink-3);
+}
+
+.mcp__foot {
+  justify-self: center;
+  max-width: 66ch;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+@media (min-width: 900px) {
+  .mcp__flow {
+    grid-template-columns: minmax(0, 1fr) clamp(190px, 22vw, 320px) minmax(0, 1fr);
+    align-items: center;
+    gap: 0;
+  }
+  .mcp__slot {
+    height: clamp(220px, 34vh, 340px);
+  }
+  .mcp__arrow {
+    rotate: -90deg;
+  }
+}
+
+.motion-ok .mcp {
+  height: 240vh;
+}
+
+.motion-ok .mcp__stage {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  padding-block: var(--nav-h) 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Phones: the flow needs the whole screen, and the chapter badge already names the section. */
+@media (max-width: 767px) {
+  .motion-ok .mcp__stage {
+    padding-bottom: 76px;
+  }
+  .motion-ok .mcp__head .chip {
+    display: none;
+  }
+  .motion-ok .mcp__slot {
+    height: 84px;
+  }
+}
+
+@media (max-width: 767px) and (max-height: 780px) {
+  .motion-ok .mcp__foot {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ how it works (chapter 03) */
 
 .how__stage {
   padding-block: 14vh;
@@ -580,6 +741,13 @@ body {
 
 .how__text {
   max-width: 520px;
+}
+
+/* The tile grid starts just past the middle of the viewport. */
+@media (min-width: 768px) {
+  .how__text {
+    max-width: min(520px, 46vw);
+  }
 }
 
 .how__text .chip {
@@ -678,7 +846,7 @@ body {
 }
 
 .motion-ok .how {
-  height: 560vh;
+  height: 420vh;
 }
 
 .motion-ok .how__stage {
@@ -707,7 +875,7 @@ body {
   }
 }
 
-/* ------------------------------------------------------------------ capabilities (chapter 03) */
+/* ------------------------------------------------------------------ capabilities (chapter 04) */
 
 .caps {
   padding-block: clamp(96px, 16vh, 180px) clamp(64px, 10vh, 120px);
@@ -766,7 +934,7 @@ body {
   position: absolute;
   inset: -1px;
   padding: 1px;
-  background: radial-gradient(260px circle at var(--mx, -400px) var(--my, -400px), rgba(122, 162, 255, 0.85), transparent 60%);
+  background: radial-gradient(260px circle at var(--mx, -400px) var(--my, -400px), rgba(169, 155, 255, 0.85), transparent 60%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
@@ -788,6 +956,7 @@ body {
 .cell__body {
   margin-top: 10px;
   max-width: 52ch;
+  text-wrap: pretty;
   font-size: 0.95rem;
   line-height: 1.55;
   color: var(--ink-2);
@@ -801,18 +970,20 @@ body {
 }
 
 .cell--routing {
-  background: linear-gradient(140deg, #2a5ff0 0%, #1d45c4 46%, #0f2468 100%);
-  border-color: rgba(160, 190, 255, 0.35);
+  background: linear-gradient(140deg, #5b3df5 0%, #4429c9 46%, #241469 100%);
+  border-color: rgba(190, 180, 255, 0.32);
+  color: var(--on-accent);
 }
 
 .cell--routing .cell__body {
-  color: #dbe5ff;
+  max-width: 72ch;
+  color: #e0dbff;
 }
 
 .cell--scouting {
   background:
-    linear-gradient(rgba(122, 162, 255, 0.1) 1px, transparent 1px) 0 0 / 28px 28px,
-    linear-gradient(90deg, rgba(122, 162, 255, 0.1) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(rgba(169, 155, 255, 0.1) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, rgba(169, 155, 255, 0.1) 1px, transparent 1px) 0 0 / 28px 28px,
     var(--panel);
 }
 
@@ -834,7 +1005,7 @@ body {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #c9d7ff;
+  color: #cfc8ff;
 }
 
 .tier__agents {
@@ -847,8 +1018,8 @@ body {
 .tier__agents li {
   padding: 4px 8px;
   font-size: 0.82rem;
-  background: rgba(3, 8, 28, 0.32);
-  border: 1px solid rgba(200, 216, 255, 0.28);
+  background: rgba(10, 8, 34, 0.32);
+  border: 1px solid rgba(220, 214, 255, 0.3);
 }
 
 .budget {
@@ -862,7 +1033,7 @@ body {
 
 .budget li {
   padding: 5px 8px;
-  background: linear-gradient(90deg, rgba(42, 95, 240, 0.55), rgba(42, 95, 240, 0.12));
+  background: linear-gradient(90deg, rgba(91, 61, 245, 0.6), rgba(91, 61, 245, 0.12));
   color: var(--ink);
 }
 
@@ -897,7 +1068,7 @@ body {
   width: 27px;
   height: 27px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .commit--rollback .commit__dot {
@@ -952,15 +1123,23 @@ body {
   color: var(--accent-hi);
 }
 
-/* ------------------------------------------------------------------ get started (chapter 04) */
+/* ------------------------------------------------------------------ get started (chapter 05) */
 
 .start {
   padding-block: clamp(80px, 12vh, 140px) clamp(64px, 10vh, 120px);
 }
 
-.cmds,
-.results {
-  max-width: 980px;
+.start__grid {
+  display: grid;
+  gap: 40px;
+}
+
+@media (min-width: 1100px) {
+  .start__grid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    align-items: end;
+    gap: clamp(32px, 4vw, 64px);
+  }
 }
 
 .cmds {
@@ -980,12 +1159,6 @@ body {
   backdrop-filter: blur(10px);
 }
 
-@media (min-width: 768px) {
-  .cmd {
-    grid-template-columns: 140px 1fr auto;
-  }
-}
-
 .cmd__label {
   font-family: var(--f-mono);
   font-size: 0.75rem;
@@ -999,12 +1172,6 @@ body {
   font-family: var(--f-mono);
   font-size: 0.92rem;
   overflow-wrap: anywhere;
-}
-
-@media (min-width: 768px) {
-  .cmd__code {
-    grid-column: auto;
-  }
 }
 
 .cmd__prompt {
@@ -1025,16 +1192,9 @@ body {
   transition: border-color 0.3s, background-color 0.3s, transform 0.15s;
 }
 
-@media (min-width: 768px) {
-  .cmd__copy {
-    grid-row: auto;
-    grid-column: auto;
-  }
-}
-
 .cmd__copy:hover {
   border-color: var(--accent-hi);
-  background: rgba(42, 95, 240, 0.2);
+  background: rgba(91, 61, 245, 0.26);
 }
 
 .cmd__copy:active {
@@ -1048,10 +1208,9 @@ body {
 }
 
 .results {
-  margin-top: 56px;
   padding: clamp(22px, 2.6vw, 34px);
-  border: 1px dashed rgba(122, 162, 255, 0.45);
-  background: rgba(6, 11, 26, 0.6);
+  border: 1px dashed rgba(169, 155, 255, 0.45);
+  background: rgba(11, 9, 30, 0.6);
 }
 
 .results__title {
@@ -1075,30 +1234,40 @@ body {
   gap: 20px;
 }
 
-@media (min-width: 768px) {
-  .metrics {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
+.metric {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .metric dt {
-  font-family: var(--f-mono);
-  font-size: 0.75rem;
-  color: var(--ink-3);
-}
-
-.metric dd {
-  margin-top: 6px;
-  font-size: 1.15rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
   color: var(--ink-2);
 }
 
+.metric dd {
+  font-size: clamp(1.7rem, 2.6vw, 2.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.results__caveat {
+  margin-top: 22px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
 .closing {
-  margin-top: clamp(80px, 14vh, 160px);
+  margin-top: clamp(72px, 12vh, 140px);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 28px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px 48px;
 }
 
 /* ------------------------------------------------------------------ footer + chapter */
@@ -1107,7 +1276,7 @@ body {
   position: relative;
   z-index: var(--z-content);
   border-top: 1px solid var(--line);
-  background: rgba(3, 6, 14, 0.8);
+  background: rgba(6, 5, 18, 0.8);
 }
 
 .footer__inner {
@@ -1159,7 +1328,7 @@ body {
   min-width: 38px;
   padding-inline: 6px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 0.8rem;
   font-weight: 600;
 }
@@ -1168,8 +1337,8 @@ body {
   display: grid;
   gap: 2px;
   padding: 7px 11px;
-  background: rgba(3, 6, 14, 0.92);
-  border: 1px solid rgba(238, 242, 251, 0.14);
+  background: rgba(6, 5, 18, 0.92);
+  border: 1px solid rgba(240, 238, 252, 0.14);
 }
 
 .chapter__kicker {

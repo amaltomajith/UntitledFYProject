@@ -24,7 +24,7 @@ const fragment = /* glsl */ `
   void main() {
     float d = length(gl_PointCoord - 0.5);
     float a = smoothstep(0.5, 0.0, d);
-    gl_FragColor = vec4(vec3(0.88, 0.92, 1.0), a * vTwinkle * 0.75);
+    gl_FragColor = vec4(vec3(0.9, 0.89, 1.0), a * vTwinkle * 0.75);
   }
 `;
 

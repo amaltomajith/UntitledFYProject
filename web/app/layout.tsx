@@ -8,11 +8,11 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", dis
 export const metadata: Metadata = {
   title: "Puppeteer-Code",
   description:
-    "A multi-agent coding assistant on Nebius Token Factory. A learned policy picks each agent; your tests judge every edit.",
+    "A coding assistant that plugs into yours over MCP. Send it your failing tests, get back a diff that passes, and keep your tokens.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050914",
+  themeColor: "#07061a",
   colorScheme: "dark",
 };
 

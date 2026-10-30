@@ -58,7 +58,7 @@ const fragment = /* glsl */ `
     float side = mix(0.3, 1.0, smoothstep(0.08, 0.62, gl_FragCoord.x / uResX));
 
     float a = max(lines, plus) * edge * depth * side * uOpacity;
-    gl_FragColor = vec4(vec3(0.86, 0.9, 1.0), a);
+    gl_FragColor = vec4(vec3(0.88, 0.86, 1.0), a);
   }
 `;
 
@@ -88,7 +88,7 @@ export function CurvedGrid() {
     if (!scene.reduced) u.uTime.value += dt;
     // Full grid in the hero, dims behind the About ring, nearly gone behind the content sections.
     const ring = smooth(scene.heroOut);
-    const away = Math.max(smooth(scene.howIn), smooth(scene.capIn));
+    const away = Math.max(smooth(scene.mcpIn), smooth(scene.howIn), smooth(scene.capIn));
     const target = (1 - 0.72 * ring) * (1 - 0.7 * away);
     u.uOpacity.value = THREE.MathUtils.damp(u.uOpacity.value, target, 5, dt);
     // A slow tilt with scroll keeps the floor alive as the page moves.

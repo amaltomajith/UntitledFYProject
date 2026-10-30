@@ -22,10 +22,11 @@ export function ScrollDirector() {
 
     const ctx = gsap.context(() => {
       if (!scene.reduced) {
-        const feed = (trigger: string, start: string, end: string, key: "heroOut" | "about" | "howIn" | "how" | "capIn") =>
+        const feed = (trigger: string, start: string, end: string, key: "heroOut" | "about" | "mcpIn" | "howIn" | "how" | "capIn") =>
           ScrollTrigger.create({ trigger, start, end, onUpdate: (s) => void (scene[key] = s.progress) });
         feed("#hero", "top top", "bottom top", "heroOut");
         feed("#about", "top top", "bottom bottom", "about");
+        feed("#mcp", "top bottom", "top top", "mcpIn");
         feed("#how", "top bottom", "top top", "howIn");
         feed("#how", "top top", "bottom bottom", "how");
         feed("#capabilities", "top bottom", "top 25%", "capIn");

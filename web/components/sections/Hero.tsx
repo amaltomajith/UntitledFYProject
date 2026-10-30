@@ -53,7 +53,7 @@ export function Hero() {
               {CTA_LABEL}
               <ArrowUpRight size={16} weight="bold" aria-hidden="true" />
             </a>
-            <a href="#how" onClick={scrollToHash} className="btn btn--ghost">
+            <a href="#mcp" onClick={scrollToHash} className="btn btn--ghost">
               {HERO.secondary}
               <ArrowRight size={16} weight="bold" aria-hidden="true" />
             </a>

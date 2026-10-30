@@ -41,8 +41,8 @@ const ICONS: Record<IconName, Icon> = {
 const TAU = Math.PI * 2;
 const DEPTH = 0.2;
 const FACE = 0.84;
-const BODY = new THREE.Color("#3d74ff");
-const BODY_DIM = new THREE.Color("#0c1838");
+const BODY = new THREE.Color("#6a4dff");
+const BODY_DIM = new THREE.Color("#120e36");
 
 /* ------------------------------------------------------------------ face texture */
 
@@ -66,14 +66,14 @@ function faceTexture(icon: Icon, onReady: () => void) {
   g.save();
   g.clip();
   const grad = g.createLinearGradient(0, 0, S * 0.9, S);
-  grad.addColorStop(0, "#e9f0ff");
-  grad.addColorStop(0.3, "#93b4ff");
-  grad.addColorStop(0.68, "#5687ff");
-  grad.addColorStop(1, "#3566f2");
+  grad.addColorStop(0, "#ece8ff");
+  grad.addColorStop(0.3, "#b3a4ff");
+  grad.addColorStop(0.68, "#7c62ff");
+  grad.addColorStop(1, "#5237ea");
   g.fillStyle = grad;
   g.fillRect(0, 0, S, S);
   const top = g.createLinearGradient(0, 0, 0, S * 0.3);
-  top.addColorStop(0, "rgba(255,255,255,0.55)");
+  top.addColorStop(0, "rgba(255,255,255,0.5)");
   top.addColorStop(1, "rgba(255,255,255,0)");
   g.fillStyle = top;
   g.fillRect(0, 0, S, S * 0.3);
@@ -88,7 +88,7 @@ function faceTexture(icon: Icon, onReady: () => void) {
   const img = new Image();
   img.onload = () => {
     g.save();
-    g.shadowColor = "rgba(18, 46, 150, 0.35)";
+    g.shadowColor = "rgba(30, 14, 130, 0.35)";
     g.shadowBlur = 16;
     g.shadowOffsetY = 4;
     g.drawImage(img, (S - 236) / 2, (S - 236) / 2, 236, 236);
@@ -133,14 +133,31 @@ function heroPose(i: number, n: number, vw: number, vh: number, t: number, mobil
 /** Chapter 01: an ellipse framing the centred text, slowly orbiting with scroll. */
 function ringPose(i: number, n: number, vw: number, vh: number, p: number, t: number, mobile: boolean, o: Pose) {
   const ph = (i / n) * TAU + 0.35 + p * 0.9 + t * 0.012;
-  o.x = Math.cos(ph) * vw * (mobile ? 0.5 : 0.43);
-  o.y = Math.sin(ph) * vh * (mobile ? 0.46 : 0.41);
+  o.x = Math.cos(ph) * vw * (mobile ? 0.5 : 0.45);
+  o.y = Math.sin(ph) * vh * (mobile ? 0.46 : 0.42);
   o.z = -0.6 + Math.sin(ph * 3 + 1) * 0.9;
   o.rx = Math.sin(ph) * 0.42;
   o.ry = -Math.cos(ph) * 0.55;
   o.rz = Math.cos(ph * 2) * 0.06;
-  o.s = mobile ? 0.5 : 1.25;
+  o.s = mobile ? 0.5 : 1.1;
   o.dim = 0;
+}
+
+/** Chapter 02: every agent collapsed into one stack, the single MCP tool. */
+function mcpPose(i: number, n: number, vw: number, vh: number, t: number, o: Pose) {
+  const S = scene.mcpS * vh * 0.56;
+  // Four visible layers with clear gaps; the other tiles tuck in behind the last one.
+  const layer = Math.min(i, 3);
+  const d = layer / 3;
+  const gap = DEPTH * S * 1.5;
+  o.x = scene.mcpX * vw + (d - 0.5) * S * 0.34;
+  o.y = scene.mcpY * vh + (d - 0.5) * S * 0.14;
+  o.z = 0.6 - layer * gap;
+  o.rx = 0.2;
+  o.ry = -0.5 + Math.sin(t * 0.4) * 0.09;
+  o.rz = 0;
+  o.s = S * (i > 3 ? 0.96 : 1);
+  o.dim = d * 0.72;
 }
 
 type Mod = { dy: number; dz: number; ds: number; dim: number; dry: number };
@@ -228,8 +245,8 @@ function scatterPose(i: number, vw: number, vh: number, t: number, o: Pose) {
   o.rx = r2 + t * 0.05 * (r1 - 0.5);
   o.ry = r1 * 2 + t * 0.07 * (r2 - 0.5);
   o.rz = r3;
-  o.s = 1.3;
-  o.dim = 0.86;
+  o.s = 1.1;
+  o.dim = 1;
 }
 
 /* ------------------------------------------------------------------ component */
@@ -304,6 +321,7 @@ export function AgentTiles() {
     const mobile = state.size.width < 768;
 
     const eRing = smooth(scene.heroOut);
+    const eMcp = smooth(scene.mcpIn);
     const eHow = smooth(scene.howIn);
     const eScat = smooth(scene.capIn);
     const swoop = Math.sin(eRing * Math.PI);
@@ -322,6 +340,10 @@ export function AgentTiles() {
         mix(a, b, eRing);
         a.z += swoop * (1.6 + hash(i) * 1.6);
         a.rx += swoop * 0.7;
+      }
+      if (eMcp > 0) {
+        mcpPose(i, n, vw, vh, t, c);
+        mix(a, c, eMcp);
       }
       if (eHow > 0) {
         howPose(i, vw, vh, stepF, mobile, c, m1, m2);
@@ -365,7 +387,7 @@ export function AgentTiles() {
 
       const mat = materials[i];
       mat.body.color.lerpColors(BODY, BODY_DIM, a.dim);
-      mat.face.color.setScalar(1 - 0.78 * a.dim);
+      mat.face.color.setScalar(1 - 0.9 * a.dim);
       mat.face.emissiveIntensity = (0.32 + 0.4 * h) * (1 - a.dim);
     }
     first.current = false;
@@ -383,7 +405,7 @@ export function AgentTiles() {
       const ci = chipIdx.current;
       const g = ci >= 0 ? groups.current[ci] : null;
       const h = ci >= 0 ? hoverAmt.current[ci] : 0;
-      if (g && h > 0.02) {
+      if (g && h > 0.3) {
         v.set(0.32, 0.36, DEPTH / 2 + 0.02).applyMatrix4(g.matrixWorld).project(state.camera);
         const x = (v.x * 0.5 + 0.5) * state.size.width;
         const y = (-v.y * 0.5 + 0.5) * state.size.height;

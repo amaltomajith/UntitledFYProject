@@ -8,7 +8,7 @@ import { scene } from "@/lib/sceneState";
 
 const TOTAL = 12;
 
-/** Chapter 02. Sticky step list; the scene moves the agent tiles in step with it. */
+/** Chapter 03. Sticky step list; the scene moves the agent tiles in step with it. */
 export function HowItWorks() {
   const root = useRef<HTMLElement>(null);
 
@@ -42,7 +42,7 @@ export function HowItWorks() {
         last = k;
         steps.forEach((s, i) => (s.dataset.state = i < k ? "done" : i === k ? "active" : "todo"));
       }
-      // The walkthrough in docs/CODING_ASSISTANT.md: 10/12 before the fix, 11/12 after the first patch, 12/12 after the debug pass.
+      // Illustrative run: 10/12 before the fix, 11/12 after the first patch, 12/12 after the debug pass.
       const f = k === steps.length - 1 ? stepF - k : 0;
       const passed = 10 + (f > 0.3 ? 1 : 0) + (f > 0.65 ? 1 : 0);
       if (passed !== lastPass) {
@@ -62,12 +62,12 @@ export function HowItWorks() {
   }, []);
 
   return (
-    <section ref={root} id="how" data-chapter="2" className="how">
+    <section ref={root} id="how" data-chapter="3" className="how">
       <div className="how__stage">
         <div className="container how__grid">
           <div className="how__text">
             <span className="chip">
-              <span className="chip__i">02</span>
+              <span className="chip__i">03</span>
               <span className="chip__t">{HOW.chip}</span>
             </span>
             <h2 className="display-3">{HOW.title}</h2>

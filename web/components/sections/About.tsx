@@ -22,7 +22,7 @@ export function About() {
       const blurIn = { filter: "blur(0px)", autoAlpha: 1, y: 0 };
       const tl = gsap.timeline({
         defaults: { ease: "none" },
-        scrollTrigger: { trigger: el, start: "top top", end: "bottom bottom", scrub: 0.6 },
+        scrollTrigger: { trigger: el, start: "top top", end: "bottom bottom", scrub: 0.2 },
       });
       tl.fromTo(".about-a .chip", { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: 0.04 }, 0)
         .fromTo(".about-a .l1 .bw", { filter: "blur(14px)", autoAlpha: 0, y: 18 }, { ...blurIn, stagger: 0.015, duration: 0.07 }, 0.01)

@@ -10,9 +10,9 @@ import { scene } from "@/lib/sceneState";
 const C = CAPABILITIES.cells;
 
 const TIERS = [
-  { name: "Zero tokens", agents: ["RepoScout", "TestRunner", "Linter", "DocsSearch"] },
+  { name: "No LLM", agents: ["RepoScout", "TestRunner", "Linter", "DocsSearch"] },
   { name: "Fast models", agents: ["Planner", "Reviewer", "Concluder", "Terminator"] },
-  { name: "Quality models", agents: ["Coder", "Debugger", "TestWriter"] },
+  { name: "Strong models", agents: ["Coder", "Debugger", "TestWriter"] },
 ];
 
 const CONTEXT = ["Task", "Test digest", "Relevant source", "Callers", "Last 3 rollbacks", "Diff"];
@@ -65,10 +65,9 @@ export function Capabilities() {
   const known = new Set(AGENTS.map((a) => a.name));
 
   return (
-    <section ref={root} id="capabilities" data-chapter="3" className="caps">
+    <section ref={root} id="capabilities" data-chapter="4" className="caps">
       <div className="container">
         <h2 className="display-3">{CAPABILITIES.title}</h2>
-        <p className="lead">{CAPABILITIES.sub}</p>
 
         <div className="bento">
           <article className="cell cell--routing" onPointerMove={spot}>

@@ -6,7 +6,11 @@ import type Lenis from "lenis";
 export const scene = {
   heroOut: 0, // 0..1 while the hero scrolls away (tiles move from carousel into the ring)
   about: 0, // 0..1 across the pinned About chapter
-  howIn: 0, // 0..1 while "How it works" scrolls in (ring -> agent grid)
+  mcpIn: 0, // 0..1 while the MCP chapter scrolls in (ring -> single stack)
+  mcpX: 0, // centre of the stack slot, as a fraction of the viewport from its centre
+  mcpY: 0,
+  mcpS: 0.26, // slot size as a fraction of viewport height
+  howIn: 0, // 0..1 while "How it works" scrolls in (stack -> agent grid)
   how: 0, // 0..1 across the pinned "How it works" chapter
   capIn: 0, // 0..1 while Capabilities scrolls in (grid -> deep background)
   hovered: -1,

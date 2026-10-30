@@ -41,28 +41,33 @@ function Command({ label, cmd }: { label: string; cmd: string }) {
 
 export function GetStarted() {
   return (
-    <section id="start" data-chapter="4" className="start">
+    <section id="start" data-chapter="5" className="start">
       <div className="container start__inner">
-        <h2 className="display-3">{START.title}</h2>
-        <p className="lead">{START.note}</p>
+        <div className="start__grid">
+          <div>
+            <h2 className="display-3">{START.title}</h2>
+            <p className="lead">{START.note}</p>
 
-        <ol className="cmds">
-          {START.commands.map((c) => (
-            <Command key={c.label} {...c} />
-          ))}
-        </ol>
+            <ol className="cmds">
+              {START.commands.map((c) => (
+                <Command key={c.label} {...c} />
+              ))}
+            </ol>
+          </div>
 
-        <div className="results">
-          <h3 className="results__title">{START.results.title}</h3>
-          <p className="results__body">{START.results.body}</p>
-          <dl className="metrics">
-            {START.results.metrics.map((m) => (
-              <div key={m} className="metric">
-                <dt>{m}</dt>
-                <dd>{START.results.pending}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="results">
+            <h3 className="results__title">{START.results.title}</h3>
+            <p className="results__body">{START.results.body}</p>
+            <dl className="metrics">
+              {START.results.stats.map((s) => (
+                <div key={s.label} className="metric">
+                  <dt>{s.label}</dt>
+                  <dd>{s.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="results__caveat">{START.results.caveat}</p>
+          </div>
         </div>
 
         <div className="closing">

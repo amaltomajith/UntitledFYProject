@@ -38,8 +38,8 @@ export default function Scene() {
       >
         <Environment resolution={256} frames={1}>
           <Lightformer form="rect" intensity={2.4} color="#ffffff" position={[-6, 6, 6]} scale={[12, 4, 1]} />
-          <Lightformer form="rect" intensity={2.2} color="#5b8cff" position={[8, 0, 4]} scale={[4, 12, 1]} />
-          <Lightformer form="ring" intensity={1.4} color="#a9c1ff" position={[0, -5, 6]} scale={5} />
+          <Lightformer form="rect" intensity={2.2} color="#7d64ff" position={[8, 0, 4]} scale={[4, 12, 1]} />
+          <Lightformer form="ring" intensity={1.4} color="#bfb2ff" position={[0, -5, 6]} scale={5} />
         </Environment>
         <ambientLight intensity={0.35} />
         <directionalLight position={[-4, 6, 8]} intensity={1.3} />

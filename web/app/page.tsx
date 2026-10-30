@@ -8,6 +8,7 @@ import { Footer } from "@/components/sections/Footer";
 import { GetStarted } from "@/components/sections/GetStarted";
 import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
+import { Mcp } from "@/components/sections/Mcp";
 
 export default function Page() {
   return (
@@ -18,6 +19,7 @@ export default function Page() {
       <main className="main">
         <Hero />
         <About />
+        <Mcp />
         <HowItWorks />
         <Capabilities />
         <GetStarted />
