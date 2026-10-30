@@ -1,0 +1,9 @@
+{
+ "id": "rpn_division",
+ "module": "rpn",
+ "split": "test",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "Division truncates; it should be true division. Fix the code so the tests pass.",
+ "solution": "FILE: rpn.py\n<<<<<<< SEARCH\n\"/\": lambda a, b: a // b\n=======\n\"/\": lambda a, b: a / b\n>>>>>>> REPLACE\n"
+}

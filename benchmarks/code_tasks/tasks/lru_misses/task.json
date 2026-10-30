@@ -1,0 +1,9 @@
+{
+ "id": "lru_misses",
+ "module": "lru",
+ "split": "test",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "Cache misses are counted as hits. Fix the code so the tests pass.",
+ "solution": "FILE: lru.py\n<<<<<<< SEARCH\n        self.hits += 1\n        return default\n=======\n        self.misses += 1\n        return default\n>>>>>>> REPLACE\n"
+}

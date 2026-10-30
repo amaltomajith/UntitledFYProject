@@ -28,25 +28,8 @@ import asyncio
 import logging
 import dataclasses
 import types
-import ssl
 from typing import Optional, Any, Union
 
-# ── SSL certificate verification bypass ─────────────────────────────────────
-try:
-    ssl._create_default_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-
-try:
-    _orig_create_default_context = ssl.create_default_context
-    def _unverified_create_default_context(*args, **kwargs):
-        context = _orig_create_default_context(*args, **kwargs)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
-    ssl.create_default_context = _unverified_create_default_context
-except Exception:
-    pass
 
 # ── sys.path guard for direct execution ──────────────────────────────────────
 import sys as _sys
@@ -215,9 +198,15 @@ class TaskClassifier:
         "Output ONLY valid JSON. No explanation."
     )
 
-    def __init__(self, groq_client: Optional[GroqClient] = None) -> None:
+    def __init__(
+        self,
+        groq_client: Optional[GroqClient] = None,
+        model_name:  Optional[str] = None,
+    ) -> None:
         """
         Build a small Agent (FAST tier, PLANNER pattern) as our classifier.
+
+        model_name overrides the Groq FAST model, e.g. a Nebius model id.
         """
         try:
             if groq_client is None:
@@ -233,6 +222,8 @@ class TaskClassifier:
                 groq_client=groq_client
             )
             # Override configurations to ensure classifier behavior
+            if model_name:
+                self._classifier_agent.config.model_name = model_name
             self._classifier_agent.config.role_prompt = self.SYSTEM_PROMPT
             self._classifier_agent.config.temperature = 0.1
             self._classifier_agent.config.max_tokens = 256
@@ -334,15 +325,35 @@ class AgentRegistry:
     or task-specific utility agents at runtime. Also handles pruning inactive agents.
     """
 
+    # Default capability flag -> agent name mapping used by update().
+    DEFAULT_CAPABILITY_MAP = {
+        "needs_code_execution": "PythonAgent",
+        "needs_web_search": "WebSearchAgent",
+        "needs_mathematical_reasoning": "ReasoningAgent",
+        "needs_creative_writing": "ModifierAgent",
+        "needs_data_analysis": "SummarizerAgent",
+    }
+
     def __init__(
         self,
         base_pool: list[Agent],
         config: Optional[AgentRegistryConfig] = None,
+        classifier: Optional[Any] = None,
+        capability_map: Optional[dict[str, str]] = None,
+        agent_factory: Optional[Any] = None,
     ) -> None:
         """
         Store base_pool and setup active pool tracking structures.
+
+        Optional overrides let other applications (e.g. puppeteer_code) reuse
+        the registry with their own agents:
+          classifier     : object with async classify(task) -> dict of flags
+          capability_map : flag name -> agent name to inject when flag is True
+          agent_factory  : callable(agent_name) -> Agent
         """
         self.config = config or AgentRegistryConfig()
+        self.capability_map = capability_map or dict(self.DEFAULT_CAPABILITY_MAP)
+        self._agent_factory = agent_factory
         
         # Store base_pool as dict {name: agent}
         self.base_pool = {agent.name: agent for agent in base_pool}
@@ -360,12 +371,15 @@ class AgentRegistry:
         self._current_step: int = 0
 
         # Build TaskClassifier sharing the client of an existing agent if possible
-        shared_client = None
-        for agent in base_pool:
-            if hasattr(agent, "groq_client"):
-                shared_client = agent.groq_client
-                break
-        self.classifier = TaskClassifier(groq_client=shared_client)
+        if classifier is not None:
+            self.classifier = classifier
+        else:
+            shared_client = None
+            for agent in base_pool:
+                if hasattr(agent, "groq_client"):
+                    shared_client = agent.groq_client
+                    break
+            self.classifier = TaskClassifier(groq_client=shared_client)
 
         logger.info(
             "[AgentRegistry] Initialized. Base pool size: %d, Min capacity: %d, Max capacity: %d",
@@ -393,6 +407,9 @@ class AgentRegistry:
         """
         Construct specialized agents on demand with shared groq client.
         """
+        if self._agent_factory is not None:
+            return self._agent_factory(agent_name)
+
         # Find shared client
         client = None
         for a in self.base_pool.values():
@@ -445,15 +462,7 @@ class AgentRegistry:
             caps = {}
 
         # 3. Check capabilities and inject missing agents if pool capacity allows
-        capability_map = {
-            "needs_code_execution": "PythonAgent",
-            "needs_web_search": "WebSearchAgent",
-            "needs_mathematical_reasoning": "ReasoningAgent",
-            "needs_creative_writing": "ModifierAgent",
-            "needs_data_analysis": "SummarizerAgent",
-        }
-
-        for cap_field, agent_name in capability_map.items():
+        for cap_field, agent_name in self.capability_map.items():
             if caps.get(cap_field, False):
                 if agent_name not in self._active_pool:
                     if len(self._active_pool) < self.config.max_pool_size:

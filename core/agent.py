@@ -45,8 +45,8 @@ except ImportError:
     pass  # dotenv not installed; rely on shell env vars
 
 # ── third-party ──────────────────────────────────────────────────────────────
-from openai import OpenAI          # Groq is OpenAI-compatible; same SDK works
-from openai import APIError, RateLimitError, APIConnectionError
+from openai import OpenAI          # Groq and Nebius are OpenAI-compatible; same SDK works
+from openai import APIError, RateLimitError, APIConnectionError, InternalServerError
 
 # ── logging setup ─────────────────────────────────────────────────────────────
 # We use the module-level logger pattern so every file in the project inherits
@@ -175,14 +175,15 @@ class ModelTier(Enum):
     """
     Which Groq model tier to use for an agent or the policy.
 
-    FAST    → llama-3.1-8b-instant   — cheap, quick; used for Mimas / most agents
-    QUALITY → llama-3.3-70b-versatile — better quality; used for Titan / policy
+    FAST    → openai/gpt-oss-20b  — cheap, quick; used for most agents
+    QUALITY → openai/gpt-oss-120b — better quality; used for the policy / hard steps
+    (Groq retired its Llama-3 models in 2026; both ids are also served by Nebius.)
 
     Keeping this as an enum (not raw strings) means a typo in a model name
     is caught at definition time, not at API call time.
     """
-    FAST    = "llama-3.1-8b-instant"
-    QUALITY = "llama-3.3-70b-versatile"
+    FAST    = "openai/gpt-oss-20b"
+    QUALITY = "openai/gpt-oss-120b"
 
 
 class ReasoningPattern(Enum):
@@ -234,59 +235,127 @@ class AgentConfig:
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2.  GROQ API CLIENT WRAPPER
+# 2.  LLM API CLIENT WRAPPERS (OpenAI-compatible: Groq, Nebius Token Factory)
 # ═════════════════════════════════════════════════════════════════════════════
 
-class GroqClient:
+def _retry_after(error) -> Optional[float]:
+    """Seconds to wait from a 429's Retry-After header, if the provider sent one."""
+    response = getattr(error, "response", None)
+    value = response.headers.get("retry-after") if response is not None else None
+    try:
+        return float(value) + 0.5 if value is not None else None
+    except ValueError:
+        return None
+
+
+def _failed_generation(error) -> Optional[str]:
+    """The attempted output from a Groq `tool_use_failed` 400, if that is what this is."""
+    body = getattr(error, "body", None)
+    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+        body = body["error"]
+    if isinstance(body, dict) and body.get("code") == "tool_use_failed":
+        return body.get("failed_generation") or ""
+    return None
+
+
+def _http_client_from_env():
     """
-    Thin wrapper around the OpenAI-compatible Groq API.
+    Optional TLS overrides for networks with an intercepting proxy.
+
+    Certificates are always verified.  Resolution order:
+
+      PUPPETEER_CA_BUNDLE=/path/to/ca.pem   → verify against that bundle
+      PUPPETEER_INSECURE_SSL=1              → disable verification, for this
+                                              client only (last resort)
+      `truststore` installed                → verify against the OS store
+                                              (Windows/macOS keychain), which
+                                              already trusts corporate or
+                                              antivirus TLS-inspection roots
+      otherwise                             → SDK default (certifi)
+
+    Returns an httpx.Client, or None to use the SDK default.
+    """
+    import httpx
+
+    ca_bundle = os.environ.get("PUPPETEER_CA_BUNDLE")
+    insecure  = os.environ.get("PUPPETEER_INSECURE_SSL", "").lower() in ("1", "true", "yes")
+    if ca_bundle:
+        return httpx.Client(verify=ca_bundle, timeout=120.0)
+    if insecure:
+        logger.warning("TLS verification disabled for LLM client (PUPPETEER_INSECURE_SSL=1).")
+        return httpx.Client(verify=False, timeout=120.0)
+    try:
+        import ssl
+        import truststore
+    except ImportError:
+        return None
+    return httpx.Client(verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT), timeout=120.0)
+
+
+class OpenAICompatClient:
+    """
+    Thin wrapper around any OpenAI-compatible chat completions endpoint.
 
     Why a wrapper instead of calling OpenAI() directly in BaseAgent?
     - We want ONE place to handle retries, rate-limit back-off, and logging.
-    - The orchestrator's policy is also a Groq call — centralising the client
+    - The orchestrator's policy is also an LLM call — centralising the client
       means we track ALL token usage in one place for the reward function.
+    - Swapping provider (Groq <-> Nebius) is a constructor change, not a change
+      to every agent file.
+
+    Subclasses set BASE_URL and API_KEY_ENV.
 
     Usage:
-        client = GroqClient()           # reads GROQ_API_KEY from env
+        client = NebiusClient()           # reads NEBIUS_API_KEY from env
         response = client.chat(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=[...],
             temperature=0.7,
             max_tokens=512,
         )
     """
 
-    # Groq's base URL for the OpenAI-compatible REST interface
-    GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+    PROVIDER    = "openai-compatible"
+    BASE_URL    = ""
+    API_KEY_ENV = ""
+    RATE_LIMIT_MAX_WAIT = 90.0   # seconds; longer Retry-After values are daily quotas
 
-    # Model aliases so callers don't hardcode strings everywhere
-    FAST_MODEL    = "llama-3.1-8b-instant"      # cheap, quick — used in Mimas
-    QUALITY_MODEL = "llama-3.3-70b-versatile"   # better, slower — used in Titan
-
-    def __init__(self, api_key: Optional[str] = None, max_retries: int = 3):
+    def __init__(
+        self,
+        api_key:     Optional[str] = None,
+        max_retries: int = 6,
+        base_url:    Optional[str] = None,
+        api_key_env: Optional[str] = None,
+    ):
         """
         Parameters
         ----------
         api_key : str, optional
-            Groq API key.  Falls back to the GROQ_API_KEY environment variable.
-            Set this in a .env file or export it in your shell; NEVER hard-code.
+            API key.  Falls back to the environment variable named by
+            API_KEY_ENV (or api_key_env).  Set it in a .env file or export it
+            in your shell; NEVER hard-code.
         max_retries : int
             How many times to retry a failed API call before raising.
-            Groq's free tier has rate limits; exponential back-off is applied.
+            Free tiers have rate limits; exponential back-off is applied.
+        base_url, api_key_env : str, optional
+            Override the class defaults (used by config-driven providers).
         """
-        key = api_key or os.environ.get("GROQ_API_KEY")
+        env_name = api_key_env or self.API_KEY_ENV
+        key = api_key or (os.environ.get(env_name) if env_name else None)
         if not key:
             raise EnvironmentError(
-                "GROQ_API_KEY not found.  "
-                "Set it with: export GROQ_API_KEY='gsk_...'"
+                f"{env_name or 'API key'} not found.  "
+                f"Set it with: export {env_name or 'API_KEY'}=...  (or add it to .env)"
             )
 
+        self.base_url = base_url or self.BASE_URL
+
         # The OpenAI SDK works with any OpenAI-compatible endpoint via base_url.
-        # Groq documents this pattern explicitly.
-        self._client = OpenAI(
-            api_key=key,
-            base_url=self.GROQ_BASE_URL,
-        )
+        kwargs: dict[str, Any] = {"api_key": key, "base_url": self.base_url}
+        http_client = _http_client_from_env()
+        if http_client is not None:
+            kwargs["http_client"] = http_client
+        self._client = OpenAI(**kwargs)
         self.max_retries = max_retries
 
     def chat(
@@ -297,7 +366,7 @@ class GroqClient:
         max_tokens: int = 2048,
     ) -> dict:
         """
-        Call the Groq chat completion endpoint with automatic retry/back-off.
+        Call the chat completion endpoint with automatic retry/back-off.
 
         Returns a plain dict (not the Pydantic object from the SDK) so that
         callers have a stable interface regardless of SDK version upgrades.
@@ -306,6 +375,7 @@ class GroqClient:
         {
             "content": str,          # the assistant message text
             "model": str,            # model that actually ran
+            "latency_ms": float,
             "usage": {
                 "prompt_tokens": int,
                 "completion_tokens": int,
@@ -313,6 +383,7 @@ class GroqClient:
             },
         }
         """
+        name = self.__class__.__name__
         last_error: Exception = None
 
         for attempt in range(1, self.max_retries + 1):
@@ -335,18 +406,22 @@ class GroqClient:
                     "model":   completion.model,
                     "latency_ms": latency_ms,
                     "usage": {
-                        "prompt_tokens":      usage.prompt_tokens,
-                        "completion_tokens":  usage.completion_tokens,
-                        "total_tokens":       usage.total_tokens,
+                        "prompt_tokens":      usage.prompt_tokens if usage else 0,
+                        "completion_tokens":  usage.completion_tokens if usage else 0,
+                        "total_tokens":       usage.total_tokens if usage else 0,
                     },
                 }
 
             except RateLimitError as e:
-                # Groq's free tier: 30 req/min for 8B, 14 req/min for 70B.
-                # Exponential back-off: wait 2^attempt seconds before retry.
-                wait = 2 ** attempt
+                # Honour the provider's Retry-After (free tiers reset per-minute
+                # token buckets); otherwise exponential back-off.  A wait longer
+                # than RATE_LIMIT_MAX_WAIT means a daily quota: give up now.
+                wait = _retry_after(e) or 2 ** attempt
+                if wait > self.RATE_LIMIT_MAX_WAIT:
+                    logger.error(f"[{name}] Rate limit needs a {wait:.0f}s wait (daily quota?); giving up.")
+                    raise
                 logger.warning(
-                    f"[GroqClient] Rate limit hit (attempt {attempt}/{self.max_retries}). "
+                    f"[{name}] Rate limit hit (attempt {attempt}/{self.max_retries}). "
                     f"Waiting {wait}s... Error: {e}"
                 )
                 time.sleep(wait)
@@ -354,17 +429,60 @@ class GroqClient:
 
             except APIConnectionError as e:
                 logger.warning(
-                    f"[GroqClient] Connection error (attempt {attempt}/{self.max_retries}): {e}"
+                    f"[{name}] Connection error (attempt {attempt}/{self.max_retries}): {e}"
                 )
                 time.sleep(2)
                 last_error = e
 
+            except InternalServerError as e:
+                # 5xx from the provider: transient, worth retrying.
+                logger.warning(
+                    f"[{name}] Server error (attempt {attempt}/{self.max_retries}): {e}"
+                )
+                time.sleep(2 ** attempt)
+                last_error = e
+
             except APIError as e:
+                # gpt-oss sometimes emits a call to one of its built-in tools even
+                # though none are offered; Groq rejects that with tool_use_failed
+                # but returns the attempted call.  Hand it back as the reply so
+                # the caller can interpret it (usage is unknown and counted as 0).
+                generation = _failed_generation(e)
+                if generation is not None:
+                    logger.warning(f"[{name}] Model called an unoffered tool; returning the call as text.")
+                    return {"content": generation, "model": model, "latency_ms": 0.0,
+                            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
                 # Non-retriable API error (bad request, invalid model, etc.)
-                logger.error(f"[GroqClient] Non-retriable API error: {e}")
+                logger.error(f"[{name}] Non-retriable API error: {e}")
                 raise
 
         raise last_error  # all retries exhausted
+
+    def list_models(self) -> list[str]:
+        """Return the model ids the provider currently serves (GET /v1/models)."""
+        return sorted(m.id for m in self._client.models.list())
+
+
+class GroqClient(OpenAICompatClient):
+    """Groq Cloud (OpenAI-compatible).  Free tier: ~30 req/min on the 8B model."""
+
+    PROVIDER      = "groq"
+    GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+    BASE_URL      = GROQ_BASE_URL
+    API_KEY_ENV   = "GROQ_API_KEY"
+
+    # Model aliases so callers don't hardcode strings everywhere
+    FAST_MODEL    = ModelTier.FAST.value        # cheap, quick
+    QUALITY_MODEL = ModelTier.QUALITY.value     # better, slower
+
+
+class NebiusClient(OpenAICompatClient):
+    """Nebius Token Factory (OpenAI-compatible).  Model ids: see `pcode models`."""
+
+    PROVIDER        = "nebius"
+    NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
+    BASE_URL        = NEBIUS_BASE_URL
+    API_KEY_ENV     = "NEBIUS_API_KEY"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1001,7 +1119,7 @@ if __name__ == "__main__":
     Expected output structure:
         ─── AgentOutput ────────────────────────────────
         Agent Name      : ReasoningAgent
-        Model Used      : llama-3.1-8b-instant
+        Model Used      : openai/gpt-oss-20b
         Reasoning Result: <text between REASONING RESULT: and FINAL ANSWER:>
         Final Answer    : <text after FINAL ANSWER:>
         Token Usage     : {'prompt_tokens': N, 'completion_tokens': M, ...}
@@ -1036,7 +1154,7 @@ if __name__ == "__main__":
     # ── 2. Instantiate the ReasoningAgent ─────────────────────────────────
     agent = ReasoningAgent(
         groq_client=client,
-        model_name=GroqClient.FAST_MODEL,   # llama-3.1-8b-instant
+        model_name=GroqClient.FAST_MODEL,   # openai/gpt-oss-20b
     )
     print(f"[OK] Agent created: {agent!r}\n")
 

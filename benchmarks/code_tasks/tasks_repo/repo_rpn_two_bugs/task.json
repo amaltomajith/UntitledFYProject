@@ -1,0 +1,10 @@
+{
+ "id": "repo_rpn_two_bugs",
+ "module": "rpn",
+ "split": "test",
+ "difficulty": "hard",
+ "n_bugs": 2,
+ "cross_module": false,
+ "task": "Division in the RPN calculator is wrong in two different ways. Fix the code so the tests pass.",
+ "solution": "FILE: rpn.py\n<<<<<<< SEARCH\n        a = stack.pop()\n        b = stack.pop()\n=======\n        b = stack.pop()\n        a = stack.pop()\n>>>>>>> REPLACE\n\nFILE: rpn.py\n<<<<<<< SEARCH\n\"/\": lambda a, b: a // b\n=======\n\"/\": lambda a, b: a / b\n>>>>>>> REPLACE\n"
+}

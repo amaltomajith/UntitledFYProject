@@ -1,0 +1,10 @@
+{
+ "id": "repo_text_two_bugs",
+ "module": "textutils",
+ "split": "train",
+ "difficulty": "hard",
+ "n_bugs": 2,
+ "cross_module": false,
+ "task": "Both slugify() and title_case() produce wrong output for capitalised input. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\nre.findall(r\"[a-z0-9]+\", text)\n=======\nre.findall(r\"[a-z0-9]+\", text.lower())\n>>>>>>> REPLACE\n\nFILE: textutils.py\n<<<<<<< SEARCH\nif w.lower() in minor:\n=======\nif i > 0 and w.lower() in minor:\n>>>>>>> REPLACE\n"
+}

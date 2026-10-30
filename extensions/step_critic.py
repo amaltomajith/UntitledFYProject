@@ -18,25 +18,8 @@ import asyncio
 import logging
 import dataclasses
 import types
-import ssl
 from typing import Optional, Any
 
-# ── SSL certificate verification bypass ─────────────────────────────────────
-try:
-    ssl._create_default_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-
-try:
-    _orig_create_default_context = ssl.create_default_context
-    def _unverified_create_default_context(*args, **kwargs):
-        context = _orig_create_default_context(*args, **kwargs)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
-    ssl.create_default_context = _unverified_create_default_context
-except Exception:
-    pass
 
 # ── sys.path guard for direct execution ──────────────────────────────────────
 import sys as _sys

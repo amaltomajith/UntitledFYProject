@@ -1,0 +1,10 @@
+{
+ "id": "repo_iv_gap_end",
+ "module": "intervals",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "gaps() returns an empty zero-length gap when the intervals cover the whole range. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\n    if cursor <= hi:\n        out.append((cursor, hi))\n=======\n    if cursor < hi:\n        out.append((cursor, hi))\n>>>>>>> REPLACE\n"
+}

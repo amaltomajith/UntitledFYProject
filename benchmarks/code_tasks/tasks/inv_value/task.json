@@ -1,0 +1,9 @@
+{
+ "id": "inv_value",
+ "module": "inventory",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "Inventory.total_value() is wrong. Fix the code so the tests pass.",
+ "solution": "FILE: inventory.py\n<<<<<<< SEARCH\nreturn sum(q + p for q, p in self._items.values())\n=======\nreturn sum(q * p for q, p in self._items.values())\n>>>>>>> REPLACE\n"
+}

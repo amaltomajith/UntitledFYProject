@@ -1,0 +1,10 @@
+{
+ "id": "repo_bank_exact",
+ "module": "bank",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "Withdrawing exactly the full balance is refused with InsufficientFunds. Fix the code so the tests pass.",
+ "solution": "FILE: bank.py\n<<<<<<< SEARCH\nif amount >= self.balance:\n=======\nif amount > self.balance:\n>>>>>>> REPLACE\n"
+}

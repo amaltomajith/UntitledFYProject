@@ -1,0 +1,9 @@
+{
+ "id": "rpn_leftover",
+ "module": "rpn",
+ "split": "test",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "evaluate('1 2') should raise ValueError because operands are left over. Fix the code so the tests pass.",
+ "solution": "FILE: rpn.py\n<<<<<<< SEARCH\nif not stack:\n=======\nif len(stack) != 1:\n>>>>>>> REPLACE\n"
+}

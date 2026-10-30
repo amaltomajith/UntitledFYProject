@@ -1,0 +1,10 @@
+{
+ "id": "repo_x_two",
+ "module": "intervals+stats",
+ "split": "test",
+ "difficulty": "hard",
+ "n_bugs": 2,
+ "cross_module": true,
+ "task": "Two figures from report.py are wrong: the median in describe_numbers() for even-sized samples, and busy_time() when meetings are nested. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nout[-1] = (out[-1][0], end)\n=======\nout[-1] = (out[-1][0], max(out[-1][1], end))\n>>>>>>> REPLACE\nFILE: stats.py\n<<<<<<< SEARCH\nreturn (ordered[mid] + ordered[mid + 1]) / 2\n=======\nreturn (ordered[mid - 1] + ordered[mid]) / 2\n>>>>>>> REPLACE\n"
+}

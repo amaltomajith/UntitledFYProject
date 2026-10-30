@@ -1,0 +1,10 @@
+{
+ "id": "repo_x_busy",
+ "module": "intervals",
+ "split": "test",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": true,
+ "task": "busy_time() in report.py under-counts when one meeting lies entirely inside another. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nout[-1] = (out[-1][0], end)\n=======\nout[-1] = (out[-1][0], max(out[-1][1], end))\n>>>>>>> REPLACE\n"
+}

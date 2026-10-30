@@ -327,39 +327,59 @@ class Environment:
         )
         self._steps.append(record)
 
+        new_status = self._check_stop(record)
+        if new_status is not None:
+            self._status = new_status
+
+        return record
+
+    def _check_stop(self, record: StepRecord) -> Optional[EpisodeStatus]:
+        """
+        Evaluate the stopping criteria for the step just recorded.
+
+        Returns the new terminal status, or None to keep RUNNING.
+        Subclasses (e.g. puppeteer_code.environment.CodeEnvironment) override
+        this to add domain rules such as "all tests green".
+        """
+        agent_name   = record.agent_name
+        agent_output = record.agent_output
+
         # ── (a) failure check — MUST come first ──────────────────────────────
         if not agent_output.success:
-            self._status = EpisodeStatus.FAILED
             logger.error(
                 "Agent %s failed at step %d: %s",
                 agent_name, record.step, agent_output.error,
             )
+            return EpisodeStatus.FAILED
 
         # ── (b) explicit termination ──────────────────────────────────────────
-        elif (
+        # Guard against the model echoing the "TERMINATE or CONTINUE" template.
+        content = agent_output.content.upper()
+        if (
             agent_name == "TerminatorAgent"
-            and "TERMINATE" in agent_output.content.upper()
+            and "TERMINATE" in content
+            and "CONTINUE" not in content
         ):
-            self._status = EpisodeStatus.TERMINATED
             logger.info(
                 "Episode TERMINATED by TerminatorAgent at step %d", record.step
             )
+            return EpisodeStatus.TERMINATED
 
         # ── (c) normal completion via ConcluderAgent ──────────────────────────
-        elif agent_name == "ConcluderAgent":
-            self._status = EpisodeStatus.COMPLETED
+        if agent_name == "ConcluderAgent":
             logger.info(
                 "Episode COMPLETED by ConcluderAgent at step %d", record.step
             )
+            return EpisodeStatus.COMPLETED
 
         # ── (d) budget exhausted ──────────────────────────────────────────────
-        elif self.current_step >= self.config.max_steps:
-            self._status = EpisodeStatus.TRUNCATED
+        if self.current_step >= self.config.max_steps:
             logger.warning(
                 "Episode TRUNCATED at max_steps=%d", self.config.max_steps
             )
+            return EpisodeStatus.TRUNCATED
 
-        return record
+        return None
 
     # ── state accessors ───────────────────────────────────────────────────────
 

@@ -1,0 +1,10 @@
+{
+ "id": "repo_stats_percentile",
+ "module": "stats",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "percentile(values, 100) crashes with IndexError and other percentiles look off by one. Fix the code so the tests pass.",
+ "solution": "FILE: stats.py\n<<<<<<< SEARCH\nreturn ordered[rank]\n=======\nreturn ordered[rank - 1]\n>>>>>>> REPLACE\n"
+}

@@ -1,0 +1,10 @@
+{
+ "id": "repo_lru_reads",
+ "module": "lru",
+ "split": "test",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "The cache evicts entries that were just read; reads should count as use. Fix the code so the tests pass.",
+ "solution": "FILE: lru.py\n<<<<<<< SEARCH\n            self.hits += 1\n=======\n            self._data.move_to_end(key)\n            self.hits += 1\n>>>>>>> REPLACE\n"
+}

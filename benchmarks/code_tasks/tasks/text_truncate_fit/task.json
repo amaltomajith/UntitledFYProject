@@ -1,0 +1,9 @@
+{
+ "id": "text_truncate_fit",
+ "module": "textutils",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "truncate() shortens strings that already fit exactly within the limit. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\nif len(text) < limit:\n=======\nif len(text) <= limit:\n>>>>>>> REPLACE\n"
+}

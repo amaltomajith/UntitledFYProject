@@ -1,0 +1,9 @@
+{
+ "id": "bank_transfer",
+ "module": "bank",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "task": "A failed transfer still credits the destination account. Fix the code so the tests pass.",
+ "solution": "FILE: bank.py\n<<<<<<< SEARCH\n    dst.deposit(amount)\n    src.withdraw(amount)\n=======\n    src.withdraw(amount)\n    dst.deposit(amount)\n>>>>>>> REPLACE\n"
+}

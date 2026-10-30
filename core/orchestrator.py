@@ -25,25 +25,8 @@ import logging
 import re
 import time
 import inspect
-import ssl
 from typing import Optional, Any
 
-# ── SSL certificate verification bypass ─────────────────────────────────────
-try:
-    ssl._create_default_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-
-try:
-    _orig_create_default_context = ssl.create_default_context
-    def _unverified_create_default_context(*args, **kwargs):
-        context = _orig_create_default_context(*args, **kwargs)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
-    ssl.create_default_context = _unverified_create_default_context
-except Exception:
-    pass
 
 # ── load .env automatically ───────────────────────────────────────────────────
 try:
@@ -72,6 +55,29 @@ from core.memory import Memory, MemoryConfig
 
 # ── logging setup ─────────────────────────────────────────────────────────────
 logger = logging.getLogger(__name__)
+
+
+def normalize_agent_name(raw_name: str) -> str:
+    """
+    Turn a policy LLM's free-text reply into a pool key.
+
+    "critic agent." -> "CriticAgent", "Concluder" -> "ConcluderAgent".
+    Shared by Orchestrator and puppeteer_code's LLM selector.
+    """
+    # 1. Strip punctuation and extra whitespace
+    cleaned = re.sub(r"[^\w\s]", "", raw_name.strip()).strip()
+
+    # 2. Split words and capitalize each to title-case it (e.g. "critic agent" -> "CriticAgent")
+    # While avoiding lowercasing any CamelCase words
+    title_cased = "".join(w[0].upper() + w[1:] for w in cleaned.split() if w)
+
+    # 3. If no "Agent" suffix: append it (e.g. "Critic" -> "CriticAgent")
+    # Normalize suffix check case-insensitively
+    if title_cased.lower().endswith("agent"):
+        title_cased = title_cased[:-5] + "Agent"
+    else:
+        title_cased += "Agent"
+    return title_cased
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -285,31 +291,7 @@ class Orchestrator:
         else:
             output = await asyncio.to_thread(self._policy_agent.execute, task=context)
 
-        raw_name = output.content.strip()
-
-        # Clean the name
-        # 1. Strip punctuation and extra whitespace
-        cleaned = re.sub(r"[^\w\s]", "", raw_name).strip()
-
-        # 2. Split words and capitalize each to title-case it (e.g. "critic agent" -> "CriticAgent")
-        # While avoiding lowercasing any CamelCase words
-        words = cleaned.split()
-        if words:
-            def title_word(w: str) -> str:
-                if not w:
-                    return ""
-                return w[0].upper() + w[1:]
-            title_cased = "".join(title_word(w) for w in words)
-        else:
-            title_cased = ""
-
-        # 3. If no "Agent" suffix: append it (e.g. "Critic" -> "CriticAgent")
-        # Normalize suffix check case-insensitively
-        if title_cased.lower().endswith("agent"):
-            title_cased = title_cased[:-5] + "Agent"
-        else:
-            title_cased += "Agent"
-
+        title_cased = normalize_agent_name(output.content)
         logger.info("Orchestrator selected: %s", title_cased)
         return title_cased
 

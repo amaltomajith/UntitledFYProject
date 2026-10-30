@@ -1,0 +1,9 @@
+{
+ "id": "bank_history",
+ "module": "bank",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "Withdrawals are recorded as deposits in the account history. Fix the code so the tests pass.",
+ "solution": "FILE: bank.py\n<<<<<<< SEARCH\nself.balance -= amount\n        self.history.append((\"deposit\", amount))\n=======\nself.balance -= amount\n        self.history.append((\"withdraw\", amount))\n>>>>>>> REPLACE\n"
+}

@@ -67,6 +67,11 @@ class RewardConfig:
     beta_step_critic:  float = 0.3
     use_step_critic:   bool  = False
     max_steps:         int   = 4
+    # Optional per-step token budget B.  When set, cost is normalised:
+    #   C_t = (F_t / B) · log(1 + t/φ)
+    # so that λ·ΣC_t lands on the same scale as the terminal reward r.
+    # None keeps the paper's raw-token cost (backward compatible).
+    token_budget:      Optional[int] = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "RewardConfig":
@@ -178,9 +183,12 @@ class RewardFunction:
 
             step_tokens.append(tokens)
 
-            # C_t = F_t * log(1 + t / phi)
+            # C_t = F_t * log(1 + t / phi), with F_t optionally normalised by B
             t = step_dict.get("step", i)
-            cost = float(tokens) * math.log(1.0 + float(t) / float(phi))
+            effective = float(tokens)
+            if self.config.token_budget:
+                effective /= float(self.config.token_budget)
+            cost = effective * math.log(1.0 + float(t) / float(phi))
             step_costs.append(cost)
 
         # Extract step critic scores s_t (0.0 if not enabled or index out of range)

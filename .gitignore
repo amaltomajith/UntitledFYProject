@@ -8,3 +8,15 @@ venv/
 dist/
 build/
 .DS_Store
+
+# Puppeteer-Code run logs and response cache
+runs/
+.pcode_cache/
+
+# Owner's private review material (contains a key file): never commit
+refs/
+
+# Local tool state
+.pytest_cache/
+.claude/worktrees/
+.claude/settings.local.json

@@ -1,0 +1,10 @@
+{
+ "id": "repo_text_slugify",
+ "module": "textutils",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "slugify() drops capital letters, e.g. 'Hello World' becomes 'ello-orld'. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\nre.findall(r\"[a-z0-9]+\", text)\n=======\nre.findall(r\"[a-z0-9]+\", text.lower())\n>>>>>>> REPLACE\n"
+}

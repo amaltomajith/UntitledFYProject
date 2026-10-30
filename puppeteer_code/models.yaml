@@ -1,0 +1,63 @@
+# Puppeteer-Code model routing table.
+#
+# Each tier lists candidate model ids in preference order.  At start-up the
+# resolver picks the first candidate the provider actually serves (via
+# GET /v1/models); if the catalog can't be fetched, the first entry is used.
+# Run `pcode models` to see the live catalog and which candidates resolve.
+#
+# prices: USD per 1M tokens as [input, output].  Leave null when unknown and
+# cost is reported as "n/a" rather than guessed.  Copy current numbers from
+# the provider console before quoting $-per-fix figures.
+
+default_provider: nebius
+
+providers:
+  nebius:
+    base_url: https://api.tokenfactory.nebius.com/v1
+    api_key_env: NEBIUS_API_KEY
+    tiers:
+      fast:
+        - Qwen/Qwen3-30B-A3B-Instruct-2507
+        - openai/gpt-oss-20b
+        - meta-llama/Llama-3.3-70B-Instruct
+      quality:
+        - Qwen/Qwen3-Coder-480B-A35B-Instruct
+        - Qwen/Qwen3-Coder-30B-A3B-Instruct
+        - moonshotai/Kimi-K2-Instruct
+        - openai/gpt-oss-120b
+    prices: {}
+
+  groq:
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+    tiers:
+      fast:
+        - openai/gpt-oss-20b
+        - qwen/qwen3.8-27b
+      quality:
+        - openai/gpt-oss-120b
+    prices: {}
+
+  mock:
+    tiers:
+      fast: [mock-fast]
+      quality: [mock-quality]
+    prices:
+      mock-fast: [0.10, 0.30]
+      mock-quality: [1.00, 3.00]
+
+# Per-agent sampling settings.  tier: fast | quality | none (tool-only agent).
+agents:
+  RepoScoutAgent:   {tier: none}
+  TestRunnerAgent:  {tier: none}
+  LinterAgent:      {tier: none}
+  DocsSearchAgent:  {tier: none}
+  PlannerAgent:     {tier: fast,    temperature: 0.2, max_tokens: 1024}
+  CoderAgent:       {tier: quality, temperature: 0.2, max_tokens: 4096}
+  DebuggerAgent:    {tier: quality, temperature: 0.3, max_tokens: 4096}
+  ReviewerAgent:    {tier: fast,    temperature: 0.1, max_tokens: 1024}
+  TestWriterAgent:  {tier: quality, temperature: 0.2, max_tokens: 3072}
+  ConcluderAgent:   {tier: fast,    temperature: 0.1, max_tokens: 768}
+  TerminatorAgent:  {tier: fast,    temperature: 0.0, max_tokens: 256}
+  ExplorerAgent:    {tier: quality, temperature: 0.7, max_tokens: 4096}
+  PolicyLLM:        {tier: fast,    temperature: 0.0, max_tokens: 64}

@@ -1,0 +1,9 @@
+{
+ "id": "stats_two_bugs",
+ "module": "stats",
+ "split": "train",
+ "difficulty": "hard",
+ "n_bugs": 2,
+ "task": "Two helpers in stats.py are broken: median of even-length lists, and clamp(). Fix the code so the tests pass.",
+ "solution": "FILE: stats.py\n<<<<<<< SEARCH\nreturn (ordered[mid] + ordered[mid + 1]) / 2\n=======\nreturn (ordered[mid - 1] + ordered[mid]) / 2\n>>>>>>> REPLACE\n\nFILE: stats.py\n<<<<<<< SEARCH\nreturn min(low, max(value, high))\n=======\nreturn max(low, min(value, high))\n>>>>>>> REPLACE\n"
+}

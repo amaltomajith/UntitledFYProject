@@ -1,0 +1,10 @@
+{
+ "id": "repo_stats_mean_empty",
+ "module": "stats",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "mean([]) should raise ValueError with a clear message, but it raises ZeroDivisionError. Fix the code so the tests pass.",
+ "solution": "FILE: stats.py\n<<<<<<< SEARCH\n    return sum(values) / len(values)\n=======\n    if not values:\n        raise ValueError(\"mean() of empty sequence\")\n    return sum(values) / len(values)\n>>>>>>> REPLACE\n"
+}

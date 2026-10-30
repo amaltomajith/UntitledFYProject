@@ -10,8 +10,8 @@ Compares token usage across 5 fixed reasoning tasks using 5 different methods:
   4. Chain-of-Thought (CoT)   — single model with CoT prompting
   5. ReAct                    — Reason+Act pattern (simulated as sequential prompts)
 
-Results are saved to benchmarks/results/token_comparison_results.json
-and are consumed by benchmarks/dashboard.html for visualization.
+Results are saved to benchmarks/results/token_comparison_results.json.
+LEGACY: bypasses core.Orchestrator and does not score answers; see CLAUDE.md section 10.
 
 Usage:
     python benchmarks/token_comparison.py
@@ -518,7 +518,6 @@ def run_benchmark():
     print(f"\n  Results saved to: {RESULTS_FILE}")
     print("\n" + "=" * 60)
     print("  BENCHMARK COMPLETE")
-    print("  Open benchmarks/dashboard.html to view the analytics.")
     print("=" * 60 + "\n")
 
     return results

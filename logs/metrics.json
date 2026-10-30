@@ -2,11 +2,11 @@
   {
     "episode": 1,
     "task": "What is 15% of 200?",
-    "total_return": -55.772921727903885,
+    "total_return": -66.47050343724327,
     "terminal_reward": 1.0,
-    "total_tokens": 1722,
+    "total_tokens": 2096,
     "total_steps": 4,
-    "elapsed_ms": 3734.2392000000473,
+    "elapsed_ms": 3944.848399998591,
     "agent_sequence": [
       "PlannerAgent",
       "ReasoningAgent",
@@ -18,11 +18,11 @@
   {
     "episode": 2,
     "task": "A train travels 120km in 2 hours. What is its speed?",
-    "total_return": -57.873981029440884,
+    "total_return": -62.49596833058786,
     "terminal_reward": 1.0,
-    "total_tokens": 1765,
+    "total_tokens": 1938,
     "total_steps": 4,
-    "elapsed_ms": 19557.203200000004,
+    "elapsed_ms": 29365.603700000065,
     "agent_sequence": [
       "PlannerAgent",
       "ReasoningAgent",
@@ -34,11 +34,11 @@
   {
     "episode": 3,
     "task": "If 5 workers complete a job in 8 days, how many days for 10 workers?",
-    "total_return": -72.06114844844298,
+    "total_return": -68.32139747295494,
     "terminal_reward": 1.0,
-    "total_tokens": 2398,
+    "total_tokens": 2113,
     "total_steps": 4,
-    "elapsed_ms": 45976.378000000295,
+    "elapsed_ms": 43070.65359999979,
     "agent_sequence": [
       "PlannerAgent",
       "ReasoningAgent",
@@ -50,11 +50,11 @@
   {
     "episode": 4,
     "task": "What is the sum of angles in a triangle?",
-    "total_return": -64.68125359259372,
+    "total_return": -59.441226248542485,
     "terminal_reward": 1.0,
-    "total_tokens": 1973,
+    "total_tokens": 1843,
     "total_steps": 4,
-    "elapsed_ms": 41462.23000000009,
+    "elapsed_ms": 38879.092900000614,
     "agent_sequence": [
       "PlannerAgent",
       "ReasoningAgent",
@@ -66,11 +66,11 @@
   {
     "episode": 5,
     "task": "A rectangle has length 12 and width 7. What is its area?",
-    "total_return": -59.27030851883998,
+    "total_return": -50.68317417255802,
     "terminal_reward": 1.0,
-    "total_tokens": 1784,
+    "total_tokens": 1552,
     "total_steps": 4,
-    "elapsed_ms": 44134.75689999996,
+    "elapsed_ms": 39811.74709999868,
     "agent_sequence": [
       "PlannerAgent",
       "ReasoningAgent",
@@ -82,11 +82,11 @@
   {
     "episode": 6,
     "task": "If x + 5 = 13, what is x?",
-    "total_return": -61.80611736481821,
+    "total_return": -65.28219025344761,
     "terminal_reward": 1.0,
-    "total_tokens": 1861,
+    "total_tokens": 1881,
     "total_steps": 4,
-    "elapsed_ms": 45001.73949999998,
+    "elapsed_ms": 45269.50969999962,
     "agent_sequence": [
       "PlannerAgent",
       "ReasoningAgent",

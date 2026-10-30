@@ -1,0 +1,10 @@
+{
+ "id": "repo_text_title",
+ "module": "textutils",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "title_case() must always capitalise the first word, even if it is a minor word. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\nif w.lower() in minor:\n=======\nif i > 0 and w.lower() in minor:\n>>>>>>> REPLACE\n"
+}

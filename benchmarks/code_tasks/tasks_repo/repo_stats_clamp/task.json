@@ -1,0 +1,10 @@
+{
+ "id": "repo_stats_clamp",
+ "module": "stats",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "clamp() returns wrong values. Fix the code so the tests pass.",
+ "solution": "FILE: stats.py\n<<<<<<< SEARCH\nreturn min(low, max(value, high))\n=======\nreturn max(low, min(value, high))\n>>>>>>> REPLACE\n"
+}

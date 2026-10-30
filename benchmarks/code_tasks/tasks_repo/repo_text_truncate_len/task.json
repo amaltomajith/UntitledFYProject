@@ -1,0 +1,10 @@
+{
+ "id": "repo_text_truncate_len",
+ "module": "textutils",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "truncate() returns strings longer than the limit. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\ntext[:limit] + suffix\n=======\ntext[: max(0, limit - len(suffix))] + suffix\n>>>>>>> REPLACE\n"
+}

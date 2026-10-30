@@ -1,0 +1,9 @@
+{
+ "id": "iv_nested",
+ "module": "intervals",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "task": "merge() shrinks an interval when a later interval is nested inside it. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nout[-1] = (out[-1][0], end)\n=======\nout[-1] = (out[-1][0], max(out[-1][1], end))\n>>>>>>> REPLACE\n"
+}

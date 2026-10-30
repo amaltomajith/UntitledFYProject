@@ -1,0 +1,10 @@
+{
+ "id": "repo_rpn_order",
+ "module": "rpn",
+ "split": "test",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "Subtraction and division give inverted results. Fix the code so the tests pass.",
+ "solution": "FILE: rpn.py\n<<<<<<< SEARCH\n        a = stack.pop()\n        b = stack.pop()\n=======\n        b = stack.pop()\n        a = stack.pop()\n>>>>>>> REPLACE\n"
+}

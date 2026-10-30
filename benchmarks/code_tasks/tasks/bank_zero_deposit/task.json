@@ -1,0 +1,9 @@
+{
+ "id": "bank_zero_deposit",
+ "module": "bank",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "deposit(0) should be rejected. Fix the code so the tests pass.",
+ "solution": "FILE: bank.py\n<<<<<<< SEARCH\nif amount < 0:\n            raise ValueError(\"deposit must be positive\")\n=======\nif amount <= 0:\n            raise ValueError(\"deposit must be positive\")\n>>>>>>> REPLACE\n"
+}

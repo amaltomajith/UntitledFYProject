@@ -1,0 +1,10 @@
+{
+ "id": "repo_inv_remove_all",
+ "module": "inventory",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "Removing all remaining units of an item raises OutOfStock. Fix the code so the tests pass.",
+ "solution": "FILE: inventory.py\n<<<<<<< SEARCH\nif qty >= have:\n=======\nif qty > have:\n>>>>>>> REPLACE\n"
+}

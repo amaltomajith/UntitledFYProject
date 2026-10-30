@@ -1,0 +1,10 @@
+{
+ "id": "repo_lru_evict_newest",
+ "module": "lru",
+ "split": "test",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "LRUCache evicts the newest entry instead of the least recently used one. Fix the code so the tests pass.",
+ "solution": "FILE: lru.py\n<<<<<<< SEARCH\nself._data.popitem()\n=======\nself._data.popitem(last=False)\n>>>>>>> REPLACE\n"
+}

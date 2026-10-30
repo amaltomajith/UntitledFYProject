@@ -1,0 +1,9 @@
+{
+ "id": "stats_variance",
+ "module": "stats",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "variance() is documented as the population variance, but the results are too large. Fix the code so the tests pass.",
+ "solution": "FILE: stats.py\n<<<<<<< SEARCH\nreturn sum((v - m) ** 2 for v in values) / (len(values) - 1)\n=======\nreturn sum((v - m) ** 2 for v in values) / len(values)\n>>>>>>> REPLACE\n"
+}

@@ -1,0 +1,9 @@
+{
+ "id": "lru_capacity",
+ "module": "lru",
+ "split": "test",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "LRUCache holds one item fewer than its capacity. Fix the code so the tests pass.",
+ "solution": "FILE: lru.py\n<<<<<<< SEARCH\nif len(self._data) >= self.capacity:\n=======\nif len(self._data) > self.capacity:\n>>>>>>> REPLACE\n"
+}

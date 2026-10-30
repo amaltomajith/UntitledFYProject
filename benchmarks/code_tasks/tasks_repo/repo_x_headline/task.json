@@ -1,0 +1,10 @@
+{
+ "id": "repo_x_headline",
+ "module": "textutils",
+ "split": "test",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": true,
+ "task": "headline() in report.py does not capitalise the first word when it is 'the', 'a' or similar. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\nif w.lower() in minor:\n=======\nif i > 0 and w.lower() in minor:\n>>>>>>> REPLACE\n"
+}

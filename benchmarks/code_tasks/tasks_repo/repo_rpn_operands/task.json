@@ -1,0 +1,10 @@
+{
+ "id": "repo_rpn_operands",
+ "module": "rpn",
+ "split": "test",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "Operators with too few operands crash with IndexError instead of raising ValueError. Fix the code so the tests pass.",
+ "solution": "FILE: rpn.py\n<<<<<<< SEARCH\nif not stack:\n=======\nif len(stack) < 2:\n>>>>>>> REPLACE\n"
+}

@@ -1,0 +1,9 @@
+{
+ "id": "stats_median_even",
+ "module": "stats",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "median() returns the wrong value for lists with an even number of elements. Fix the code so the tests pass.",
+ "solution": "FILE: stats.py\n<<<<<<< SEARCH\nreturn (ordered[mid] + ordered[mid + 1]) / 2\n=======\nreturn (ordered[mid - 1] + ordered[mid]) / 2\n>>>>>>> REPLACE\n"
+}

@@ -1,0 +1,10 @@
+{
+ "id": "repo_iv_unsorted",
+ "module": "intervals",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "merge() gives wrong results when the input is not sorted. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nfor start, end in intervals:\n=======\nfor start, end in sorted(intervals):\n>>>>>>> REPLACE\n"
+}

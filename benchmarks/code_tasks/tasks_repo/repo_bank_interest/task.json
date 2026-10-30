@@ -1,0 +1,10 @@
+{
+ "id": "repo_bank_interest",
+ "module": "bank",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "apply_interest() produces fractional cents; it must round down to whole cents. Fix the code so the tests pass.",
+ "solution": "FILE: bank.py\n<<<<<<< SEARCH\ninterest = account.balance * rate_percent / 100\n=======\ninterest = account.balance * rate_percent // 100\n>>>>>>> REPLACE\n"
+}

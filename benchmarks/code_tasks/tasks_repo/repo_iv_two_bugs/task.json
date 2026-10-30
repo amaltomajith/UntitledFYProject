@@ -1,0 +1,10 @@
+{
+ "id": "repo_iv_two_bugs",
+ "module": "intervals",
+ "split": "train",
+ "difficulty": "hard",
+ "n_bugs": 2,
+ "cross_module": false,
+ "task": "Interval merging and overlap checks are both wrong in intervals.py. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nout[-1] = (out[-1][0], end)\n=======\nout[-1] = (out[-1][0], max(out[-1][1], end))\n>>>>>>> REPLACE\n\nFILE: intervals.py\n<<<<<<< SEARCH\nreturn a[0] < b[1] and b[0] < a[1]\n=======\nreturn a[0] <= b[1] and b[0] <= a[1]\n>>>>>>> REPLACE\n"
+}

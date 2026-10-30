@@ -1,0 +1,10 @@
+{
+ "id": "repo_inv_zero_items",
+ "module": "inventory",
+ "split": "train",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "Items whose stock reaches zero still show up in low_stock(). Fix the code so the tests pass.",
+ "solution": "FILE: inventory.py\n<<<<<<< SEARCH\nif have - qty < 0:\n=======\nif have - qty == 0:\n>>>>>>> REPLACE\n"
+}

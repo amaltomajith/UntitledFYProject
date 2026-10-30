@@ -1,0 +1,9 @@
+{
+ "id": "text_palindrome",
+ "module": "textutils",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "is_palindrome() returns False for real palindromes. Fix the code so the tests pass.",
+ "solution": "FILE: textutils.py\n<<<<<<< SEARCH\nreturn cleaned == cleaned.reverse()\n=======\nreturn cleaned == cleaned[::-1]\n>>>>>>> REPLACE\n"
+}

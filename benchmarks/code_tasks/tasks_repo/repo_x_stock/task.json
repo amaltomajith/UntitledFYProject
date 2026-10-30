@@ -1,0 +1,10 @@
+{
+ "id": "repo_x_stock",
+ "module": "inventory",
+ "split": "test",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": true,
+ "task": "stock_summary() in report.py reports the wrong stock value. Fix the code so the tests pass.",
+ "solution": "FILE: inventory.py\n<<<<<<< SEARCH\nreturn sum(q + p for q, p in self._items.values())\n=======\nreturn sum(q * p for q, p in self._items.values())\n>>>>>>> REPLACE\n"
+}

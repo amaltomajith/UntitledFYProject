@@ -1,0 +1,10 @@
+{
+ "id": "repo_iv_touching",
+ "module": "intervals",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "cross_module": false,
+ "task": "overlaps() must treat intervals that touch at an endpoint as overlapping (they are closed). Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nreturn a[0] < b[1] and b[0] < a[1]\n=======\nreturn a[0] <= b[1] and b[0] <= a[1]\n>>>>>>> REPLACE\n"
+}

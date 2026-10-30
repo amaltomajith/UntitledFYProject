@@ -1,0 +1,10 @@
+{
+ "id": "repo_lru_two_bugs",
+ "module": "lru",
+ "split": "test",
+ "difficulty": "hard",
+ "n_bugs": 2,
+ "cross_module": false,
+ "task": "LRUCache evicts the wrong entry and its hit/miss statistics are wrong. Fix the code so the tests pass.",
+ "solution": "FILE: lru.py\n<<<<<<< SEARCH\nself._data.popitem()\n=======\nself._data.popitem(last=False)\n>>>>>>> REPLACE\n\nFILE: lru.py\n<<<<<<< SEARCH\n        self.hits += 1\n        return default\n=======\n        self.misses += 1\n        return default\n>>>>>>> REPLACE\n"
+}

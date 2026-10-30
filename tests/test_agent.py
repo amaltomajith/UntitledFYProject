@@ -162,12 +162,13 @@ class TestAgentOutput:
 
     def _make_output(self, reasoning="test reasoning", final_answer="test answer"):
         return AgentOutput(
-            agent_name       = "ReasoningAgent",
-            reasoning_result = reasoning,
-            final_answer     = final_answer,
-            raw_response     = f"REASONING RESULT: {reasoning}\nFINAL ANSWER: {final_answer}",
-            token_usage      = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
-            latency_ms       = 100.0,
+            agent_name   = "ReasoningAgent",
+            reasoning    = reasoning,
+            content      = final_answer,
+            raw_response = f"REASONING RESULT: {reasoning}\nFINAL ANSWER: {final_answer}",
+            tokens_used  = 30,
+            latency_ms   = 100.0,
+            metadata     = {"token_usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}},
         )
 
     def test_output_is_dataclass(self):
@@ -194,13 +195,34 @@ class TestAgentOutput:
 
     def test_metadata_defaults_to_empty_dict(self):
         """metadata field must default to {} not None (mutable default trap)."""
-        out = self._make_output()
+        out = AgentOutput(
+            agent_name   = "ReasoningAgent",
+            reasoning    = "test reasoning",
+            content      = "test answer",
+            raw_response = "test response",
+            tokens_used  = 10,
+            latency_ms   = 10.0,
+        )
         assert out.metadata == {}
 
     def test_two_outputs_dont_share_metadata(self):
         """Mutable default field must NOT be shared between instances."""
-        a = self._make_output()
-        b = self._make_output()
+        a = AgentOutput(
+            agent_name   = "ReasoningAgent",
+            reasoning    = "test reasoning",
+            content      = "test answer",
+            raw_response = "test response",
+            tokens_used  = 10,
+            latency_ms   = 10.0,
+        )
+        b = AgentOutput(
+            agent_name   = "ReasoningAgent",
+            reasoning    = "test reasoning",
+            content      = "test answer",
+            raw_response = "test response",
+            tokens_used  = 10,
+            latency_ms   = 10.0,
+        )
         a.metadata["key"] = "value"
         assert "key" not in b.metadata
 
@@ -300,22 +322,24 @@ class TestReasoningAgentUnit:
     def test_invoke_populates_token_usage(self, reasoning_agent):
         """Token usage must be populated for the reward function C_t."""
         out = reasoning_agent.invoke(task="x", context="")
-        assert "prompt_tokens"     in out.token_usage
-        assert "completion_tokens" in out.token_usage
-        assert "total_tokens"      in out.token_usage
+        assert out.tokens_used > 0
+        token_usage = out.metadata.get("token_usage", {})
+        assert "prompt_tokens"     in token_usage
+        assert "completion_tokens" in token_usage
+        assert "total_tokens"      in token_usage
         # All must be non-negative integers
-        for v in out.token_usage.values():
+        for v in token_usage.values():
             assert isinstance(v, int) and v >= 0
 
     def test_invoke_parses_reasoning_result(self, reasoning_agent):
         """The REASONING RESULT tag from the mock response must be extracted."""
         out = reasoning_agent.invoke(task="x", context="")
-        assert "225 minutes" in out.reasoning_result or "3.75" in out.reasoning_result
+        assert "225 minutes" in out.reasoning or "3.75" in out.reasoning
 
     def test_invoke_parses_final_answer(self, reasoning_agent):
         """The FINAL ANSWER tag from the mock response must be extracted."""
         out = reasoning_agent.invoke(task="x", context="")
-        assert "225" in out.final_answer
+        assert "225" in out.content
 
     def test_invoke_stores_in_episode_history(self, reasoning_agent):
         """
@@ -386,7 +410,7 @@ class TestReasoningAgentUnit:
         """__repr__ must show model and tools for easy debugging."""
         r = repr(reasoning_agent)
         assert "ReasoningAgent" in r
-        assert "llama" in r.lower()
+        assert reasoning_agent.config.model_name in r
 
     def test_to_context_string_is_labelled(self, reasoning_agent):
         """
@@ -480,7 +504,7 @@ class TestReasoningAgentLive:
         assert output.agent_name == "ReasoningAgent"
 
         # Token usage must be non-zero (real API always returns usage)
-        assert output.token_usage["total_tokens"] > 0, \
+        assert output.tokens_used > 0, \
             "Real API call must return non-zero token usage"
 
         # Latency must be positive
@@ -488,11 +512,11 @@ class TestReasoningAgentLive:
 
         # -- 5. Content assertions (answer must contain 225) --
         # 450 km / 120 km/h = 3.75 h = 225 min — the model must get this right
-        combined = (output.reasoning_result + " " + output.final_answer).lower()
+        combined = (output.reasoning + " " + output.content).lower()
         assert "225" in combined, (
             f"Expected '225' in the combined output but got:\n"
-            f"Reasoning: {output.reasoning_result[:200]}\n"
-            f"Answer: {output.final_answer[:200]}"
+            f"Reasoning: {output.reasoning[:200]}\n"
+            f"Answer: {output.content[:200]}"
         )
 
         # -- 6. Context string for orchestrator --
@@ -510,8 +534,17 @@ class TestReasoningAgentLive:
         print("  LIVE TEST RESULT")
         print("=" * 60)
         print(f"  Model         : {output.metadata.get('model_used')}")
-        print(f"  Total tokens  : {output.token_usage['total_tokens']}")
+        print(f"  Total tokens  : {output.tokens_used}")
         print(f"  Latency (ms)  : {output.latency_ms:.0f}")
-        print(f"  Reasoning     : {output.reasoning_result[:150]}...")
-        print(f"  Final Answer  : {output.final_answer}")
+        print(f"  Reasoning     : {output.reasoning[:150]}...")
+        print(f"  Final Answer  : {output.content}")
         print("=" * 60)
+
+
+def test_retry_after_header_is_honoured():
+    from types import SimpleNamespace
+    from core.agent import _retry_after
+    err = SimpleNamespace(response=SimpleNamespace(headers={"retry-after": "7"}))
+    assert _retry_after(err) == 7.5
+    assert _retry_after(SimpleNamespace(response=None)) is None
+    assert _retry_after(SimpleNamespace(response=SimpleNamespace(headers={"retry-after": "soon"}))) is None

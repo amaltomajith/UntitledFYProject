@@ -1,0 +1,9 @@
+{
+ "id": "inv_add",
+ "module": "inventory",
+ "split": "train",
+ "difficulty": "easy",
+ "n_bugs": 1,
+ "task": "Adding more of an existing item replaces its quantity instead of increasing it. Fix the code so the tests pass.",
+ "solution": "FILE: inventory.py\n<<<<<<< SEARCH\nself._items[name] = (qty, price)\n=======\nself._items[name] = (current + qty, price)\n>>>>>>> REPLACE\n"
+}

@@ -1,0 +1,10 @@
+{
+ "id": "repo_x_free",
+ "module": "intervals",
+ "split": "test",
+ "difficulty": "medium",
+ "n_bugs": 1,
+ "cross_module": true,
+ "task": "free_slots() in report.py returns wrong slots when meetings are listed out of order. Fix the code so the tests pass.",
+ "solution": "FILE: intervals.py\n<<<<<<< SEARCH\nfor start, end in intervals:\n=======\nfor start, end in sorted(intervals):\n>>>>>>> REPLACE\n"
+}
