@@ -141,6 +141,7 @@ def cmd_buildbench(args) -> int:
     tasks = load_tasks(only=args.task or None)
     methods = args.methods.split(",")
     meta = {"benchmark": "PCodeBench-Build", "provider": args.provider, "methods": methods,
+            "token_budget": args.token_budget,
             "tasks": [t.id for t in tasks], "seeds": args.seeds}
     rows: list[dict] = []
     if args.resume and out.exists():
@@ -157,7 +158,8 @@ def cmd_buildbench(args) -> int:
             for method in methods:
                 if (task.id, method, seed) in done:
                     continue
-                row = run_one(task, method, seed, make_provider, policy if method == "linear" else None)
+                row = run_one(task, method, seed, make_provider, policy if method == "linear" else None,
+                              args.token_budget)
                 rows.append(row)
                 save(out, rows, meta)
                 print(f"{task.id:14s} {method:10s} seed {seed}: {row['passed']}/{row['total']} "
@@ -177,6 +179,7 @@ def register(sub, provider_args) -> None:
     b.add_argument("--methods", default="heuristic,direct")
     b.add_argument("--task", action="append", help="only this task id (repeatable)")
     b.add_argument("--seeds", type=int, default=1)
+    b.add_argument("--token-budget", type=int, default=60000, help="tokens allowed per task")
     b.add_argument("--quality-model", default=None)
     b.add_argument("--fast-model", default=None)
     b.add_argument("--weights", default=None, help="LinearAssistantPolicy weights file")

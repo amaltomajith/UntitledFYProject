@@ -258,23 +258,26 @@ terminal chat (`pcode`) and browser IDE (`pcode ide`), with Fix mode inside the 
     notice. Fix mode: 3 of 3 tests in the sandbox, repo unchanged until Apply.
 - Decisions to know about:
   - `/console` was left in place but removed from the nav. It still works with `pcode serve`.
-  - The landing hero still sells MCP only. New copy should be proposed to the owner, not changed
-    silently.
+  - The landing hero now sells the assistant, with the owner's approval. Lower sections still sell MCP.
   - The `web_search` tool in the plan was not built.
 - `start-pcode.bat` was written but has never been run from scratch.
 - `web/out` must be rebuilt after any web change.
 
-**PCodeBench-Build, built 2026-10-30, no results yet.** 9 tasks (6 Python, 3 Node), hidden acceptance
-tests, each proved fair by `build.py --check`. Status of the runs:
-- `runs/buildbench-groq-20b.json` (20b in both tiers) and `runs/buildbench-groq.json` (120b) each hold
-  one quota-excluded row and nothing else. **There is no valid comparison.**
-- An early 20b run, on code since fixed and now deleted, had the puppeteer fail `js_calc` where the
-  plain loop passed at 47,795 tokens. Replaying the cache showed why: a malformed tool call was
-  treated as a finished Builder, and `built` was set with no files written. Both are fixed, and a
-  rerun shows the Builder retrying. Whether the puppeteer beats the plain loop is **unknown**.
-- The same tasks were used to debug the engine, so they are a development set. Say so when reporting.
-- `gpt-oss-20b` sometimes drops the leading `/` of a JS regex in its own output (seen in the raw
-  cached reply). This is the model, not our parsing.
+**PCodeBench-Build, built 2026-10-30.** 9 tasks (6 Python, 3 Node), hidden acceptance tests, each
+proved fair by `build.py --check`. Real Nebius results are in README §14.7 (`runs/buildbench-nebius.json`,
+primary limit 60k; `runs/buildbench-nebius-150k.json`, sensitivity run at 150k):
+- **The puppeteer did not win.** At 60k: direct 7 of 9, 25.6k tokens; heuristic 6 of 9, 51.6k. At 150k:
+  both 7 of 9, 27.6k against 81.8k. False success claims: direct 2, heuristic 0.
+- Do not oversell the zero: every heuristic failure ended at the token limit.
+- One seed, and the tasks were used for debugging, so they are a development set.
+- About 83% of tokens (152 sampled calls) are prompts resent in the tool loop. Fix that first.
+- A malformed tool call used to end the agent, and `built` was set with no files. Both are fixed.
+- `gpt-oss-20b` on Groq sometimes dropped the leading `/` of a JS regex in its own output.
+
+**Submission state, 2026-10-30.** Public repo pushed to `main`, Apache-2.0 added by the owner's decision,
+site at https://puppeteer-code.vercel.app (`web/out`, static, no live IDE). Demo video:
+`runs/puppeteer-code-demo.mp4`, 66 s, silent, 800x450. It is gitignored, so it must be uploaded by hand.
+The owner's Devpost template calls the project **CompactCode**; the repo and site still say Puppeteer-Code.
 
 **Done**
 - Engine fixes:
@@ -365,14 +368,11 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
 
 ## 9. Next steps (in order, updated 2026-10-30)
 
-0. **Show the owner the assistant, and propose new landing hero copy.** The hero sells MCP only,
-   while the product is now an assistant.
-1. **Run PCodeBench-Build** when quota is back. It does not fit one day's free quota: expect several
-   days, or use Nebius. Run one setting at a time and rerun with `--resume`:
-   `python -m puppeteer_code buildbench --provider groq --cache runs/cache/build --methods heuristic,direct --resume --out runs/buildbench-groq.json`
-   Add `--quality-model openai/gpt-oss-20b --out runs/buildbench-groq-20b.json` for the small model.
-   Then write the result in README §14.7. Retrain `LinearAssistantPolicy` with `--methods linear
-   --train --weights checkpoints/assistant_linear_groq.json`, on tasks kept apart from the final test.
+0. **Reduce the tool-loop prompt cost**, the biggest measured cost (README §14.7).
+1. **Rerun PCodeBench-Build on fresh tasks with more seeds**, so the result is a real test set:
+   `python -m puppeteer_code buildbench --cache runs/cache/nebius --methods heuristic,direct --seeds 3 --out runs/buildbench-nebius-3.json`
+   Then retrain `LinearAssistantPolicy` with `--methods linear --train --weights
+   checkpoints/assistant_linear_nebius.json`, on tasks kept apart from the final test.
 2. **Check the hackathon deadline.** Third-party pages say the Nebius x NVIDIA Global AI Hackathon
    closes 2026-10-30 10:00 am PT (https://nebiusglobalaihackathon.devpost.com/; not confirmed on
    Devpost, which blocks automated access). Reported requirements: runs on Token Factory or AI

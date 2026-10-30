@@ -961,10 +961,22 @@ python benchmarks/build_tasks/build.py --check
 python -m puppeteer_code buildbench --provider nebius --cache runs/cache/nebius --out runs/buildbench-nebius.json
 ```
 
-**Results: none yet.** The first runs stopped at Groq's free daily quota with no valid
-comparison row, so this benchmark has no numbers to report. The nine tasks were also used to
-debug the engine (one run exposed a bug in how a malformed tool call was handled), so they are a
-development set. A fair final comparison needs either fresh tasks or a clear statement of this.
+**Results** (Nebius Token Factory, 2026-10-30; FAST `nvidia/Nemotron-3_5-Lightning`, QUALITY
+`nvidia/nemotron-3-super-120b-a12b`; 9 tasks, one seed, 0 rows excluded):
+
+| Token limit | Method | Tasks passed | Hidden tests | Tokens/task | $/task | False claims |
+|---|---|---|---|---|---|---|
+| 60,000 (primary) | direct | 7 of 9 | 89.8% | 25,573 | 0.0092 | 2 |
+| 60,000 (primary) | heuristic | 6 of 9 | 81.8% | 51,575 | 0.0188 | 0 |
+| 150,000 (sensitivity) | direct | 7 of 9 | 89.8% | 27,642 | 0.0099 | 2 |
+| 150,000 (sensitivity) | heuristic | 7 of 9 | 89.8% | 81,801 | 0.0314 | 0 |
+
+**The puppeteer did not beat the plain loop here.** It costs about two to three times the tokens
+and at best matches its pass rate. Its one lead is zero false claims, but every puppeteer failure
+ended at the token limit, so this does not show that its checks caught those failures. The tasks
+were also used to debug the engine, so they are a development set, and one seed is not enough for
+a firm conclusion. In a sample of 152 calls, about 83% of tokens were prompts resent on each
+tool turn, which is the first cost to reduce.
 
 ## 15. Citation
 
