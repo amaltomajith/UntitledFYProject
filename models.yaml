@@ -1,0 +1,2 @@
+fast: Qwen/Qwen3-30B-A3B-Instruct-2507
+quality: openai/gpt-oss-120b   # (already selected, you can keep it)
