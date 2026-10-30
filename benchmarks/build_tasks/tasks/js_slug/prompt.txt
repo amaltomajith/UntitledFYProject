@@ -1,0 +1,5 @@
+Create slug.js using CommonJS (module.exports). It exports slugify(text) and uniqueSlug(text,
+existing). slugify lower-cases, turns accented letters into plain ones (Crème Brûlée becomes
+creme-brulee), replaces runs of anything else with one hyphen, and trims hyphens from both ends.
+It throws TypeError if text is not a string. uniqueSlug returns the slug, or adds -2, -3 and so on
+until it is not in the existing array.

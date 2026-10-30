@@ -153,10 +153,12 @@ class LinearPolicy(Policy):
     """
 
     name = "linear"
+    ACTIONS = AGENTS
+    FEATURES = FEATURE_NAMES
 
     def __init__(self, lr: float = 0.05, temperature: float = 1.0, greedy: bool = False,
                  seed: Optional[int] = None, baseline_decay: float = 0.9, l2: float = 1e-4):
-        self.W = np.zeros((len(AGENTS), len(FEATURE_NAMES)))
+        self.W = np.zeros((len(self.ACTIONS), len(self.FEATURES)))
         self.lr = lr
         self.temperature = temperature
         self.greedy = greedy
@@ -169,7 +171,7 @@ class LinearPolicy(Policy):
         self.token_budget = 20000
 
     def probs(self, x: np.ndarray, allowed: list[str]) -> tuple[np.ndarray, np.ndarray]:
-        mask = np.array([a in allowed for a in AGENTS])
+        mask = np.array([a in allowed for a in self.ACTIONS])
         logits = self.W @ x / max(self.temperature, 1e-6)
         logits = np.where(mask, logits, -np.inf)
         logits -= logits[mask].max()
@@ -177,12 +179,15 @@ class LinearPolicy(Policy):
         p[~mask] = 0.0
         return p / p.sum(), mask
 
+    def featurize(self, env) -> np.ndarray:
+        return features(env, self.token_budget)
+
     def select(self, env, allowed: list[str]) -> str:
-        x = features(env, self.token_budget)
+        x = self.featurize(env)
         p, mask = self.probs(x, allowed)
-        idx = int(np.argmax(p)) if self.greedy else int(self.rng.choice(len(AGENTS), p=p))
+        idx = int(np.argmax(p)) if self.greedy else int(self.rng.choice(len(self.ACTIONS), p=p))
         self.trace.append((x, mask, idx))
-        return AGENTS[idx]
+        return self.ACTIONS[idx]
 
     def begin_episode(self) -> None:
         self.trace = []
@@ -220,7 +225,7 @@ class LinearPolicy(Policy):
     def save(self, path: str | Path) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(json.dumps({
-            "agents": AGENTS, "features": FEATURE_NAMES, "W": self.W.tolist(),
+            "agents": self.ACTIONS, "features": self.FEATURES, "W": self.W.tolist(),
             "baseline": self.baseline, "episodes": self.episodes, "lr": self.lr,
         }, indent=1), encoding="utf-8")
 
@@ -230,10 +235,10 @@ class LinearPolicy(Policy):
         pol = cls(lr=data.get("lr", 0.05), **kw)
         W = np.zeros_like(pol.W)
         for i, a in enumerate(data["agents"]):
-            if a in AGENTS:
+            if a in cls.ACTIONS:
                 for j, f in enumerate(data["features"]):
-                    if f in FEATURE_NAMES:
-                        W[AGENTS.index(a), FEATURE_NAMES.index(f)] = data["W"][i][j]
+                    if f in cls.FEATURES:
+                        W[cls.ACTIONS.index(a), cls.FEATURES.index(f)] = data["W"][i][j]
         pol.W = W
         pol.baseline = data.get("baseline")
         pol.episodes = data.get("episodes", 0)
@@ -241,9 +246,9 @@ class LinearPolicy(Policy):
 
     def top_weights(self, k: int = 3) -> dict[str, list[tuple[str, float]]]:
         out = {}
-        for i, a in enumerate(AGENTS):
+        for i, a in enumerate(self.ACTIONS):
             order = np.argsort(-np.abs(self.W[i]))[:k]
-            out[a] = [(FEATURE_NAMES[j], round(float(self.W[i, j]), 3)) for j in order]
+            out[a] = [(self.FEATURES[j], round(float(self.W[i, j]), 3)) for j in order]
         return out
 
 

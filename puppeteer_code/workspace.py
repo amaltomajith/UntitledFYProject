@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -44,10 +45,23 @@ IGNORE_DIRS = {
 SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 GIT_IDENTITY = ["-c", "user.name=puppeteer-code", "-c", "user.email=pcode@localhost",
                 "-c", "commit.gpgsign=false"]
+_KEY_VAR = re.compile(r"(API_KEY|TOKEN|SECRET)$")
 
 
 class WorkspaceError(RuntimeError):
     pass
+
+
+def scrub(text: str) -> str:
+    """Remove the values of secret environment variables from outgoing text."""
+    for name, value in os.environ.items():
+        if value and len(value) >= 8 and _KEY_VAR.search(name):
+            text = text.replace(value, "[hidden]")
+    return text
+
+
+def scrub_obj(obj):
+    return json.loads(scrub(json.dumps(obj, default=str)))
 
 
 def scrubbed_env() -> dict[str, str]:

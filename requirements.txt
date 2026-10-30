@@ -20,6 +20,7 @@ numpy>=1.26.0
 # ── Puppeteer-Code (puppeteer_code/) ────────────────────────────────────────
 pyyaml>=6.0          # models.yaml routing table
 rich>=13.0           # terminal output for `pcode`
+prompt_toolkit>=3.0  # chat input for `pcode`
 truststore>=0.9      # verify TLS against the OS certificate store (corporate / antivirus proxies)
 # Optional: ruff (real linting for LinterAgent; falls back to a syntax check)
 # Optional: TAVILY_API_KEY in .env enables web docs search (plain REST, no SDK)

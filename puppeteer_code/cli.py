@@ -202,6 +202,60 @@ def cmd_mcp(args) -> int:
     return 0
 
 
+# ── assistant ────────────────────────────────────────────────────────────────
+
+def cmd_chat(args) -> int:
+    from puppeteer_code.assistant.terminal import run_chat
+    return run_chat(args)
+
+
+# ── web ──────────────────────────────────────────────────────────────────────
+
+def cmd_serve(args) -> int:
+    try:
+        from puppeteer_code.server import serve
+    except ImportError:
+        print("The web console needs FastAPI and uvicorn: pip install fastapi uvicorn", file=sys.stderr)
+        return 1
+    say(f"Puppeteer-Code console: http://127.0.0.1:{args.port}/console  (Ctrl+C to stop)")
+    serve(args.port, mock_solution=args.mock_solution)
+    return 0
+
+
+def cmd_ide(args) -> int:
+    try:
+        from puppeteer_code.assistant.ide import make_hub
+        from puppeteer_code.server import serve
+    except ImportError:
+        print("The IDE needs FastAPI and uvicorn: pip install fastapi uvicorn", file=sys.stderr)
+        return 1
+    if not (ROOT / "web" / "out" / "ide.html").exists():
+        say("The IDE page is not built yet. Run: cd web && npm ci && npm run build", "red")
+        return 1
+    hub = make_hub(args.provider, args.mode, args.cache)
+    if args.folder:
+        hub.open(args.folder)
+    url = f"http://127.0.0.1:{args.port}/ide#token={hub.token}"
+    say(f"Puppeteer-Code IDE: {url}  (Ctrl+C to stop)")
+    if not args.no_browser:
+        import threading
+        import webbrowser
+        threading.Timer(1.0, webbrowser.open, [url]).start()
+    try:
+        serve(args.port, ide=hub)
+    finally:
+        hub.close()
+    return 0
+
+
+def cmd_export_web(args) -> int:
+    from puppeteer_code.server import export_web
+    info = export_web(Path(args.runs), Path(args.out))
+    say(f"Wrote {info['benchmarks']} benchmark(s), {info['training']} training run(s) to {args.out}")
+    say(f"Demo run: {info['demo_run'] or 'none yet (needs a successful fix on a real provider)'}")
+    return 0
+
+
 # ── parser ───────────────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
@@ -211,6 +265,13 @@ def build_parser() -> argparse.ArgumentParser:
     def provider_args(sp):
         sp.add_argument("--provider", default=None, help="nebius (default) | groq | mock")
         sp.add_argument("--cache", default=None, help="directory for the on-disk response cache")
+
+    c = sub.add_parser("chat", help="talk to the assistant in a folder (the default command)")
+    provider_args(c)
+    c.add_argument("--folder", default=".")
+    c.add_argument("--mode", default="ask", choices=["ask", "auto"], help="ask before commands, or do not")
+    c.add_argument("--resume", default=None, help="id of an earlier conversation")
+    c.set_defaults(func=cmd_chat)
 
     m = sub.add_parser("models", help="show the provider catalog and resolved tiers")
     provider_args(m)
@@ -246,15 +307,38 @@ def build_parser() -> argparse.ArgumentParser:
     mc = sub.add_parser("mcp", help="run as an MCP server (stdio) for Claude Code, Cursor, OpenCode")
     mc.set_defaults(func=cmd_mcp)
 
+    sv = sub.add_parser("serve", help="run the local web console on 127.0.0.1")
+    sv.add_argument("--port", type=int, default=8765)
+    sv.add_argument("--mock-solution", default=None, help="(mock provider) edit-block file to return")
+    sv.set_defaults(func=cmd_serve)
+
+    id_ = sub.add_parser("ide", help="open the assistant in your browser")
+    provider_args(id_)
+    id_.add_argument("--folder", default=None, help="open this folder straight away")
+    id_.add_argument("--port", type=int, default=8765)
+    id_.add_argument("--mode", default="ask", choices=["ask", "auto"], help="ask before commands, or do not")
+    id_.add_argument("--no-browser", action="store_true", help="print the link but do not open it")
+    id_.set_defaults(func=cmd_ide)
+
+    ex = sub.add_parser("export-web", help="write real results to web/public/data for the hosted site")
+    ex.add_argument("--runs", default=str(ROOT / "runs"))
+    ex.add_argument("--out", default=str(ROOT / "web" / "public" / "data"))
+    ex.set_defaults(func=cmd_export_web)
+
     try:
         from puppeteer_code import bench as _bench
         _bench.register(sub, provider_args)
     except ImportError:
         pass
+    from puppeteer_code.assistant import buildbench as _buildbench
+    _buildbench.register(sub, provider_args)
     return p
 
 
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+        argv.insert(0, "chat")
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)

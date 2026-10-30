@@ -1,0 +1,224 @@
+{
+ "task": "mean() is wrong for even lists",
+ "repo": "calc_repo",
+ "status": "completed",
+ "success": true,
+ "steps": [
+  {
+   "step": 0,
+   "agent": "RepoScoutAgent",
+   "allowed": [
+    "RepoScoutAgent"
+   ],
+   "model": "none",
+   "tokens": 0,
+   "seconds": 0.006,
+   "content": "calc.py:9-11  function mean(values)  score=3.0  (called by failing test_mean; matches task: mean)\ncalc.py:14-16  function describe(values)  score=3.0  (called by failing test_describe; matches task: mean)",
+   "success": true,
+   "error": "",
+   "verdict": null,
+   "prompt_chars": 0,
+   "pass_rate": 0.3333333333333333,
+   "best_pass_rate": 0.3333333333333333,
+   "head": "ec15e4b046f34704dd5dd54fb1e1f1d2cc999736",
+   "rollbacks": 0,
+   "rollback_reason": null,
+   "cost_usd": 0.0,
+   "reward": 1.843065529643419,
+   "credit": 0.0
+  },
+  {
+   "step": 1,
+   "agent": "CoderAgent",
+   "allowed": [
+    "PlannerAgent",
+    "CoderAgent"
+   ],
+   "model": "openai/gpt-oss-120b",
+   "tokens": 948,
+   "seconds": 1.094,
+   "content": "applied: calc.py (exact)",
+   "success": true,
+   "error": "",
+   "verdict": null,
+   "prompt_chars": 2288,
+   "pass_rate": 0.3333333333333333,
+   "best_pass_rate": 0.3333333333333333,
+   "head": "ec15e4b046f34704dd5dd54fb1e1f1d2cc999736",
+   "rollbacks": 0,
+   "rollback_reason": null,
+   "cost_usd": null,
+   "reward": 1.9400689785720202,
+   "credit": 1.0
+  },
+  {
+   "step": 2,
+   "agent": "TestRunnerAgent",
+   "allowed": [
+    "TestRunnerAgent",
+    "LinterAgent",
+    "ReviewerAgent"
+   ],
+   "model": "none",
+   "tokens": 0,
+   "seconds": 3.225,
+   "content": "CHECKPOINT: 3/3 passing (pass rate improved)",
+   "success": true,
+   "error": "",
+   "verdict": {
+    "action": "checkpoint",
+    "delta": 0.6666666666666667,
+    "reason": "pass rate improved"
+   },
+   "prompt_chars": 0,
+   "pass_rate": 1.0,
+   "best_pass_rate": 1.0,
+   "head": "181dd04684f22837bfac8275a9482f5c9e8fe49d",
+   "rollbacks": 0,
+   "rollback_reason": null,
+   "cost_usd": null,
+   "reward": 1.5178589376251401,
+   "credit": 0.0
+  },
+  {
+   "step": 3,
+   "agent": "ConcluderAgent",
+   "allowed": [
+    "ConcluderAgent",
+    "LinterAgent",
+    "ReviewerAgent"
+   ],
+   "model": "openai/gpt-oss-20b",
+   "tokens": 404,
+   "seconds": 0.762,
+   "content": "Fixed mean() to use correct divisor, restoring accurate averages and passing all tests.",
+   "success": true,
+   "error": "",
+   "verdict": null,
+   "prompt_chars": 558,
+   "pass_rate": 1.0,
+   "best_pass_rate": 1.0,
+   "head": "181dd04684f22837bfac8275a9482f5c9e8fe49d",
+   "rollbacks": 0,
+   "rollback_reason": null,
+   "cost_usd": null,
+   "reward": 1.5977462501317266,
+   "credit": 0.0
+  }
+ ],
+ "final": {
+  "final_tests": {
+   "passed": 3,
+   "total": 3,
+   "pass_rate": 1.0,
+   "failing": [],
+   "error": "",
+   "returncode": 0,
+   "duration_s": 3.0368553000007523
+  },
+  "baseline_tests": {
+   "passed": 1,
+   "total": 3,
+   "pass_rate": 0.3333333333333333,
+   "failing": [
+    "tests.test_calc::test_describe",
+    "tests.test_calc::test_mean"
+   ],
+   "error": "",
+   "returncode": 1,
+   "duration_s": 3.3751818999953684
+  },
+  "targets_fixed": [
+   "tests.test_calc::test_describe",
+   "tests.test_calc::test_mean"
+  ],
+  "targets_total": 2,
+  "regressions": [],
+  "integrity_violations": [],
+  "diff": "diff --git a/calc.py b/calc.py\nindex 3c37b16..ef02dd5 100644\n--- a/calc.py\n+++ b/calc.py\n@@ -8,7 +8,7 @@ def add(a, b):\n \n def mean(values):\n     \"\"\"Arithmetic mean of a non-empty list.\"\"\"\n-    return sum(values) / (len(values) - 1)\n+    return sum(values) / len(values)\n \n \n def describe(values):\n",
+  "diff_stat": [
+   1,
+   1,
+   1
+  ],
+  "lint_clean": true,
+  "lint_issues": [],
+  "success": true
+ },
+ "rewards": {
+  "total_return": 1.843065529643419,
+  "terminal_reward": 1.6,
+  "total_step_cost": 0.0415076204013633,
+  "efficiency_score": 38.54713868269473,
+  "steps": 4,
+  "per_step": [
+   {
+    "step": 0,
+    "agent_name": "RepoScoutAgent",
+    "tokens_used": 0,
+    "step_cost": 0.0,
+    "step_score": 0.0,
+    "reward": 1.843065529643419
+   },
+   {
+    "step": 1,
+    "agent_name": "CoderAgent",
+    "tokens_used": 948,
+    "step_cost": 0.018970121718628115,
+    "step_score": 1.0,
+    "reward": 1.9400689785720202
+   },
+   {
+    "step": 2,
+    "agent_name": "TestRunnerAgent",
+    "tokens_used": 0,
+    "step_cost": 0.0,
+    "step_score": 0.0,
+    "reward": 1.5178589376251401
+   },
+   {
+    "step": 3,
+    "agent_name": "ConcluderAgent",
+    "tokens_used": 404,
+    "step_cost": 0.022537498682735187,
+    "step_score": 0.0,
+    "reward": 1.5977462501317266
+   }
+  ],
+  "policy_update": {}
+ },
+ "usage": {
+  "by_model": {
+   "openai/gpt-oss-120b": {
+    "calls": 1,
+    "prompt_tokens": 790,
+    "completion_tokens": 158,
+    "cached_calls": 0
+   },
+   "openai/gpt-oss-20b": {
+    "calls": 1,
+    "prompt_tokens": 275,
+    "completion_tokens": 129,
+    "cached_calls": 0
+   }
+  },
+  "total_tokens": 1352,
+  "cost_usd": null
+ },
+ "policy": "heuristic",
+ "wall_s": 12.59,
+ "injections": [],
+ "config": {
+  "max_steps": 12,
+  "snapshot_chars": null,
+  "tdd": false,
+  "test_timeout": 120,
+  "holdout_dir": null,
+  "use_registry": true,
+  "explore": true,
+  "budget_usd": null,
+  "budget_tokens": null
+ },
+ "provider": "groq",
+ "id": "fix-20261030-184034"
+}

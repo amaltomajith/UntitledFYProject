@@ -15,8 +15,10 @@ model results; every output file records the provider used.
 
 from __future__ import annotations
 
+import copy
 import datetime as _dt
 import json
+import logging
 import random
 import statistics
 import time
@@ -29,6 +31,7 @@ from puppeteer_code.policy import LinearPolicy, make_policy
 from puppeteer_code.providers import ProviderSession
 from puppeteer_code.tasks import BenchTask, load_tasks
 
+logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 ENGINE_METHODS = ["heuristic", "linear", "llm", "fixed", "random"]
 BASELINE_METHODS = ["single-shot", "react", "react-tools"]
@@ -120,25 +123,39 @@ def train(tasks: list[BenchTask], provider: str, episodes: int, out_weights: Pat
     else:
         policy = LinearPolicy(lr=lr, seed=seed)
     curve: list[dict] = []
+    if resume and curve_path.exists():
+        curve = json.loads(curve_path.read_text(encoding="utf-8")).get("episodes", [])
+    start = len(curve)
+    stopped = None
     order: list[BenchTask] = []
-    for ep in range(episodes):
+    for ep in range(start, start + episodes):
         if not order:
             order = list(tasks)
             rng.shuffle(order)
         task = order.pop()
         session = make_task_session(provider, task, seed * 100003 + ep, cache_dir, models)
         orch = CodeOrchestrator(session, policy=policy, config=RunConfig(max_steps=max_steps))
+        before = copy.deepcopy(policy.__dict__)
         res = orch.run(task.repo, task.task)
         row = _row("linear-train", task, ep, res.to_dict())
+        if row.get("provider_error"):
+            # An outage says nothing about the policy's choices: undo this episode's update.
+            policy.__dict__.update(before)
+            if is_quota_error(row["provider_error"]):
+                stopped = row["provider_error"]
+                break
+            continue
         row.update(episode=ep, terminal_reward=res.rewards.get("terminal_reward"),
                    update=res.rewards.get("policy_update"))
         curve.append(row)
         if on_episode:
             on_episode(row)
-        if (ep + 1) % 10 == 0 or ep == episodes - 1:
-            policy.save(out_weights)
-            _save_json(curve_path, {"provider": provider, "seed": seed, "lr": lr, "episodes": curve,
-                                    "weights": str(out_weights), "top_weights": policy.top_weights()})
+        # Saved every episode: real episodes cost quota, and a killed run must lose nothing.
+        policy.save(out_weights)
+        _save_json(curve_path, {"provider": provider, "seed": seed, "lr": lr, "episodes": curve,
+                                "weights": str(out_weights), "top_weights": policy.top_weights()})
+    if stopped:
+        logger.warning("Training stopped on a provider quota; rerun with --resume. %s", stopped[:200])
     return curve
 
 

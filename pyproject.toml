@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "puppeteer-code"
 version = "0.1.0"
 description = "RL-orchestrated multi-agent coding assistant on open models (Puppeteer++ / Nebius Token Factory)"
+license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,6 +15,7 @@ dependencies = [
     "numpy>=1.26.0",
     "pyyaml>=6.0",
     "rich>=13.0",
+    "prompt_toolkit>=3.0",
     "truststore>=0.9",
     "pytest>=8.0.0",
 ]
@@ -21,12 +23,13 @@ dependencies = [
 [project.optional-dependencies]
 lint = ["ruff>=0.4"]
 mcp = ["mcp>=1.10"]
+web = ["fastapi>=0.111.0", "uvicorn>=0.29.0"]
 
 [project.scripts]
 pcode = "puppeteer_code.cli:main"
 
 [tool.setuptools]
-packages = ["puppeteer_code", "core", "training", "extensions"]
+packages = ["puppeteer_code", "puppeteer_code.assistant", "core", "training", "extensions"]
 
 [tool.setuptools.package-data]
 puppeteer_code = ["models.yaml"]

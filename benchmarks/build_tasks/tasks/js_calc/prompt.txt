@@ -1,0 +1,4 @@
+Create calc.js using CommonJS (module.exports), exporting evaluate(expression). It evaluates
+arithmetic with + - * / %, parentheses, unary minus and decimal numbers, with normal precedence and
+left associativity. Do not use eval or the Function constructor. It throws RangeError on division
+by zero and SyntaxError on malformed input such as "1 +", "(2", "2 2" or an empty string.

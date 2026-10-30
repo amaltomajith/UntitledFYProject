@@ -1,0 +1,6 @@
+Create calendar_tools.py. merge(intervals) takes (start, end) tuples in any order and returns them
+merged and sorted, joining ones that overlap or touch. free_slots(busy, day_start, day_end,
+min_length=1) returns the gaps inside the day as a sorted list of tuples, ignoring busy time
+outside the day and gaps shorter than min_length. first_common_slot(calendars, length, day_start,
+day_end) takes a list of busy lists and returns the earliest (start, start + length) free for
+everyone, or None. An interval with start >= end raises ValueError.

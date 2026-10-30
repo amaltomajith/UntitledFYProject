@@ -31,7 +31,7 @@ import logging
 import dataclasses
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 # ── load .env automatically ───────────────────────────────────────────────────
 # python-dotenv reads .env (or .env.local) from the project root and injects
@@ -364,9 +364,14 @@ class OpenAICompatClient:
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        tools: Optional[list[dict]] = None,
+        on_delta: Optional[Callable[[str], None]] = None,
     ) -> dict:
         """
         Call the chat completion endpoint with automatic retry/back-off.
+
+        tools    : OpenAI-style tool definitions; the reply then carries "tool_calls".
+        on_delta : called with each piece of text as it arrives (plain replies only).
 
         Returns a plain dict (not the Pydantic object from the SDK) so that
         callers have a stable interface regardless of SDK version upgrades.
@@ -381,6 +386,7 @@ class OpenAICompatClient:
                 "completion_tokens": int,
                 "total_tokens": int,
             },
+            "tool_calls": [{"id": str, "name": str, "arguments": str}],   # only with tools
         }
         """
         name = self.__class__.__name__
@@ -389,11 +395,15 @@ class OpenAICompatClient:
         for attempt in range(1, self.max_retries + 1):
             try:
                 t0 = time.monotonic()
+                if on_delta is not None and not tools:
+                    return self._stream(model, messages, temperature, max_tokens, on_delta, t0)
+                extra = {"tools": tools, "tool_choice": "auto"} if tools else {}
                 completion = self._client.chat.completions.create(
                     model=model,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    **extra,
                 )
                 latency_ms = (time.monotonic() - t0) * 1000
 
@@ -401,7 +411,7 @@ class OpenAICompatClient:
                 choice = completion.choices[0]
                 usage  = completion.usage
 
-                return {
+                reply = {
                     "content": choice.message.content or "",
                     "model":   completion.model,
                     "latency_ms": latency_ms,
@@ -411,6 +421,12 @@ class OpenAICompatClient:
                         "total_tokens":       usage.total_tokens if usage else 0,
                     },
                 }
+                if tools:
+                    reply["tool_calls"] = [
+                        {"id": c.id, "name": c.function.name, "arguments": c.function.arguments or "{}"}
+                        for c in choice.message.tool_calls or []
+                    ]
+                return reply
 
             except RateLimitError as e:
                 # Honour the provider's Retry-After (free tiers reset per-minute
@@ -450,13 +466,39 @@ class OpenAICompatClient:
                 generation = _failed_generation(e)
                 if generation is not None:
                     logger.warning(f"[{name}] Model called an unoffered tool; returning the call as text.")
-                    return {"content": generation, "model": model, "latency_ms": 0.0,
+                    return {"content": generation, "model": model, "latency_ms": 0.0, "tool_calls": [],
+                            "tool_failed": True,
                             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
                 # Non-retriable API error (bad request, invalid model, etc.)
                 logger.error(f"[{name}] Non-retriable API error: {e}")
                 raise
 
         raise last_error  # all retries exhausted
+
+    def _stream(self, model, messages, temperature, max_tokens, on_delta, t0) -> dict:
+        """One streaming completion. Providers that omit usage leave the counts at 0."""
+        stream = self._client.chat.completions.create(
+            model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
+            stream=True, stream_options={"include_usage": True},
+        )
+        parts: list[str] = []
+        usage = None
+        served = model
+        for chunk in stream:
+            served = chunk.model or served
+            usage = chunk.usage or usage
+            text = chunk.choices[0].delta.content if chunk.choices else None
+            if text:
+                parts.append(text)
+                on_delta(text)
+        return {
+            "content": "".join(parts), "model": served, "latency_ms": (time.monotonic() - t0) * 1000,
+            "usage": {
+                "prompt_tokens":     usage.prompt_tokens if usage else 0,
+                "completion_tokens": usage.completion_tokens if usage else 0,
+                "total_tokens":      usage.total_tokens if usage else 0,
+            },
+        }
 
     def list_models(self) -> list[str]:
         """Return the model ids the provider currently serves (GET /v1/models)."""

@@ -1,0 +1,9 @@
+Create a package named inventory with three modules. inventory/store.py has class Store with
+add(name, qty, price), remove(name, qty) and total_value(). add on an existing name increases qty
+and replaces the price. remove raises KeyError for an unknown name and ValueError if qty is more
+than held; an item reaching 0 is deleted. Quantities must be positive integers or ValueError is
+raised. items is a dict of name to {"qty": q, "price": p}. inventory/report.py has
+low_stock(store, threshold) returning names with qty below threshold, sorted, and
+format_report(store) returning one line per item sorted by name, like "apple x3 @ 1.50", then a
+last line "TOTAL 4.50". inventory/storage.py has save(store, path) and load(path), using JSON.
+`from inventory import Store` must work.

@@ -733,7 +733,11 @@ passing tests after each edit gives a dense, objective step reward. Puppeteer-Co
 (`puppeteer_code/`) is the implemented application. Project state, plan and setup for
 contributors are in [CLAUDE.md](CLAUDE.md).
 
-### 14.1 What it does
+It has two forms. The **assistant** (§14.6) is the product: you talk to it in a terminal or a
+browser IDE, and it plans, writes, runs and tests code in your folder. **Fix mode** (§14.1 to
+§14.5) repairs an existing Python repo with failing pytest tests, in a sandbox.
+
+### 14.1 Fix mode
 
 `pcode fix "<bug report>" --repo <path>` copies the repository into a throw-away git
 sandbox and runs one Puppeteer episode. Each step:
@@ -762,7 +766,7 @@ At the end it prints a **verified diff**. Your files are only changed if you pas
 
 ```bash
 pip install -r requirements.txt        # or: pip install -e .   (gives the `pcode` command)
-# .env:  NEBIUS_API_KEY=...            (GROQ_API_KEY also works with --provider groq)
+# .env:  NEBIUS_API_KEY=...            (runs NVIDIA Nemotron; GROQ_API_KEY also works with --provider groq)
 
 python -m puppeteer_code models                         # live catalog + which tier models resolve
 python -m puppeteer_code fix "mean() is wrong for even lists" --repo path/to/repo
@@ -909,6 +913,58 @@ Engineering findings from the real runs:
 - the report
 
 ---
+
+### 14.6 The assistant
+
+`pcode` starts a chat in the current folder. `pcode ide` opens a browser IDE with a file tree,
+editor, diff view, terminal, app preview and chat. Both read one event stream from one engine,
+`puppeteer_code/assistant/`.
+
+The puppeteer idea carries over: a policy picks one agent per step, cheap and strong models are
+routed by role, prompts stay bounded, and bad work is rolled back. What changes is the goal.
+Fix mode has a failing test to drive it. The assistant often starts from an empty folder, so:
+
+| Fix mode | Assistant |
+|---|---|
+| Copies the repo to a sandbox | Edits your folder after a snapshot, with one-click Undo |
+| Goal: failing tests pass | Goal: your request. It writes tests first when it can |
+| pytest only | Finds tests or a build in many languages, with a syntax check as the last resort |
+| Rolls back any non-improving step | One repair attempt, then rollback and one retry from the good state |
+| Single task | A saved, resumable conversation |
+
+The assistant's reward stays objective: it comes from verification results, not from a model's
+opinion. When nothing could be verified, or the work failed, code adds that to the reply, so a
+model cannot report success on its own say-so.
+
+**Safety limits, stated plainly.** Tools stay inside the project and refuse `.env*`, key files
+and `.git`. Commands are classified as allow, ask or refuse, but this is a rule list and not a
+sandbox: commands run with your permissions. Undo does not cover files excluded by the project's
+own `.gitignore`.
+
+### 14.7 PCodeBench-Build
+
+Bug fixes in §14.3 turned out to be too easy for a large model to separate the methods. This
+benchmark asks a harder question: can a method build working software from a prompt in an empty
+folder?
+
+- 9 tasks: 6 Python and 3 Node, from a small module up to a three-module package.
+- The score comes from acceptance tests the model never sees, run on a copy of its output. A
+  method cannot pass by writing weak tests of its own.
+- Each hidden test is proved fair: `build.py --check` confirms a reference solution passes and an
+  empty folder fails.
+- The quota fallback is off, so a row always used the models it names. Provider errors are
+  excluded and reported.
+- `false_claims` counts runs that reported success but failed the hidden tests.
+
+```bash
+python benchmarks/build_tasks/build.py --check
+python -m puppeteer_code buildbench --provider nebius --cache runs/cache/nebius --out runs/buildbench-nebius.json
+```
+
+**Results: none yet.** The first runs stopped at Groq's free daily quota with no valid
+comparison row, so this benchmark has no numbers to report. The nine tasks were also used to
+debug the engine (one run exposed a bug in how a malformed tool call was handled), so they are a
+development set. A fair final comparison needs either fresh tasks or a clear statement of this.
 
 ## 15. Citation
 

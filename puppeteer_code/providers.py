@@ -24,7 +24,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import yaml
 
@@ -56,12 +56,13 @@ def approx_tokens(text: str) -> int:
 # 1.  OFFLINE + CACHING CLIENTS
 # ═════════════════════════════════════════════════════════════════════════════
 
-Responder = Callable[[str, list[dict]], str]
+Responder = Callable[[str, list[dict]], Union[str, dict]]
 
 
 class MockClient:
     """
-    Offline client.  `responder(model, messages)` returns the assistant text.
+    Offline client.  `responder(model, messages)` returns the assistant text, or
+    {"content": str, "tool_calls": [...]} to script a tool-using turn.
 
     The default responder answers every prompt with a no-op so that the
     engine can be exercised structurally; tests pass scripted responders.
@@ -73,13 +74,18 @@ class MockClient:
         self._lock = threading.Lock()
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7,
-             max_tokens: int = 2048) -> dict:
-        text = self.responder(model, messages)
-        prompt_tokens = sum(approx_tokens(m.get("content", "")) for m in messages)
+             max_tokens: int = 2048, tools: Optional[list[dict]] = None,
+             on_delta: Optional[Callable[[str], None]] = None) -> dict:
+        reply = self.responder(model, messages)
+        text = reply.get("content", "") if isinstance(reply, dict) else reply
+        prompt_tokens = sum(approx_tokens(m.get("content") or "") for m in messages)
         completion_tokens = approx_tokens(text)
         with self._lock:
-            self.calls.append({"model": model, "messages": messages, "temperature": temperature})
-        return {
+            self.calls.append({"model": model, "messages": messages, "temperature": temperature,
+                               "tools": tools})
+        if on_delta is not None and text:
+            on_delta(text)
+        out = {
             "content": text,
             "model": model,
             "latency_ms": 0.0,
@@ -89,6 +95,11 @@ class MockClient:
                 "total_tokens": prompt_tokens + completion_tokens,
             },
         }
+        if tools:
+            out["tool_calls"] = reply.get("tool_calls", []) if isinstance(reply, dict) else []
+        if isinstance(reply, dict) and reply.get("tool_failed"):
+            out["tool_failed"] = True
+        return out
 
     def list_models(self) -> list[str]:
         return ["mock-fast", "mock-quality"]
@@ -103,20 +114,25 @@ class CachingClient:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.hits = 0
 
-    def _key(self, model, messages, temperature, max_tokens) -> Path:
-        blob = json.dumps([model, messages, temperature, max_tokens], sort_keys=True)
+    def _key(self, model, messages, temperature, max_tokens, tools=None) -> Path:
+        request = [model, messages, temperature, max_tokens] + ([tools] if tools else [])
+        blob = json.dumps(request, sort_keys=True)
         return self.cache_dir / (hashlib.sha256(blob.encode("utf-8")).hexdigest() + ".json")
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7,
-             max_tokens: int = 2048) -> dict:
-        path = self._key(model, messages, temperature, max_tokens)
+             max_tokens: int = 2048, tools: Optional[list[dict]] = None,
+             on_delta: Optional[Callable[[str], None]] = None) -> dict:
+        path = self._key(model, messages, temperature, max_tokens, tools)
         if path.exists():
             self.hits += 1
             data = json.loads(path.read_text(encoding="utf-8"))
             data["cached"] = True
+            if on_delta is not None and data.get("content"):
+                on_delta(data["content"])
             return data
+        extra = {k: v for k, v in (("tools", tools), ("on_delta", on_delta)) if v is not None}
         data = self.inner.chat(model=model, messages=messages,
-                               temperature=temperature, max_tokens=max_tokens)
+                               temperature=temperature, max_tokens=max_tokens, **extra)
         path.write_text(json.dumps(data), encoding="utf-8")
         return data
 
@@ -189,9 +205,10 @@ class MeteredClient:
         self.meter = meter
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7,
-             max_tokens: int = 2048) -> dict:
+             max_tokens: int = 2048, **extra) -> dict:
+        extra = {k: v for k, v in extra.items() if v is not None}
         data = self.inner.chat(model=model, messages=messages,
-                               temperature=temperature, max_tokens=max_tokens)
+                               temperature=temperature, max_tokens=max_tokens, **extra)
         self.meter.record(model, data.get("usage", {}), cached=bool(data.get("cached")))
         return data
 

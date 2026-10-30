@@ -1,0 +1,5 @@
+Create wordfreq.py. top_words(text, n) returns the n most common words as a list of (word, count)
+tuples, most common first, with ties in alphabetical order. Words are case-insensitive, made of
+letters and apostrophes, and returned in lower case. Running `python wordfreq.py FILE --top N`
+prints one "word count" line per word; --top defaults to 3. A missing file prints an error to
+stderr and exits with code 2.

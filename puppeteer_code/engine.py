@@ -25,6 +25,7 @@ import inspect
 import json
 import logging
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -95,6 +96,7 @@ class RunResult:
     wall_s: float
     injections: list[dict]
     config: dict
+    provider: str = ""
 
     @property
     def diff(self) -> str:
@@ -112,11 +114,13 @@ class RunResult:
 
 class CodeOrchestrator:
     def __init__(self, session, policy: Optional[Policy] = None, config: Optional[RunConfig] = None,
-                 on_event: Optional[Callable[[dict], None]] = None):
+                 on_event: Optional[Callable[[dict], None]] = None,
+                 cancel: Optional[threading.Event] = None):
         self.session = session
         self.policy = policy or HeuristicPolicy()
         self.config = config or RunConfig()
         self.on_event = on_event or (lambda e: None)
+        self.cancel = cancel      # set it to stop after the current step
 
     def run(self, repo: str | Path, task: str) -> RunResult:
         return asyncio.run(self.arun(repo, task))
@@ -148,9 +152,13 @@ class CodeOrchestrator:
         memory = Memory()
         self.policy.begin_episode()
         steps: list[dict] = []
+        cancelled = False
 
         try:
             while not env.is_done:
+                if self.cancel is not None and self.cancel.is_set():
+                    cancelled = True
+                    break
                 if registry is not None:
                     await registry.update(task, env.current_step, memory)
                     pool = {a.name: a for a in registry.active_agents}
@@ -166,6 +174,7 @@ class CodeOrchestrator:
                 step = env.current_step
                 self.on_event({"type": "select", "step": step, "agent": name, "allowed": allowed})
                 ts = time.monotonic()
+                rollbacks_before = len(env.state.rollbacks)
                 if inspect.iscoroutinefunction(getattr(agent, "arun", None)):
                     output = await agent.arun(env)
                 else:
@@ -184,6 +193,8 @@ class CodeOrchestrator:
                     "prompt_chars": output.metadata.get("prompt_chars", 0),
                     "pass_rate": st.last_tests.pass_rate, "best_pass_rate": st.best_pass_rate,
                     "head": env.ws.head(), "rollbacks": len(st.rollbacks),
+                    "rollback_reason": (st.rollbacks[-1]["reason"]
+                                        if len(st.rollbacks) > rollbacks_before else None),
                     "cost_usd": self.session.meter.cost_usd,
                 }
                 steps.append(info)
@@ -198,12 +209,12 @@ class CodeOrchestrator:
             reward_summary["policy_update"] = update
             usage_after = self.session.meter.snapshot()
             result = RunResult(
-                task=task, repo=str(repo), status=env.status.value, success=final["success"],
-                steps=steps, final=final, rewards=reward_summary,
+                task=task, repo=str(repo), status="cancelled" if cancelled else env.status.value,
+                success=final["success"], steps=steps, final=final, rewards=reward_summary,
                 usage=_usage_delta(usage_before, usage_after),
                 policy=self.policy.name, wall_s=round(time.monotonic() - t0, 2),
                 injections=list(registry._injection_log) if registry else [],
-                config=dataclasses.asdict(cfg),
+                config=dataclasses.asdict(cfg), provider=self.session.provider,
             )
             self.on_event({"type": "end", "result": result})
             return result

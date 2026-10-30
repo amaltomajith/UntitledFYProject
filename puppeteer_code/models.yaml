@@ -17,15 +17,21 @@ providers:
     api_key_env: NEBIUS_API_KEY
     tiers:
       fast:
+        - nvidia/Nemotron-3_5-Lightning
+        - nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
         - Qwen/Qwen3-30B-A3B-Instruct-2507
-        - openai/gpt-oss-20b
-        - meta-llama/Llama-3.3-70B-Instruct
       quality:
-        - Qwen/Qwen3-Coder-480B-A35B-Instruct
-        - Qwen/Qwen3-Coder-30B-A3B-Instruct
-        - moonshotai/Kimi-K2-Instruct
+        - nvidia/nemotron-3-super-120b-a12b
+        - nvidia/Nemotron-3-Ultra-550b-a55b
         - openai/gpt-oss-120b
-    prices: {}
+    # from GET /v1/models?verbose=true on 2026-10-30
+    prices:
+      nvidia/Nemotron-3_5-Lightning: [0.06, 0.24]
+      nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B: [0.06, 0.24]
+      Qwen/Qwen3-30B-A3B-Instruct-2507: [0.10, 0.30]
+      nvidia/nemotron-3-super-120b-a12b: [0.30, 0.90]
+      nvidia/Nemotron-3-Ultra-550b-a55b: [1.00, 3.00]
+      openai/gpt-oss-120b: [0.15, 0.60]
 
   groq:
     base_url: https://api.groq.com/openai/v1
@@ -61,3 +67,11 @@ agents:
   TerminatorAgent:  {tier: fast,    temperature: 0.0, max_tokens: 256}
   ExplorerAgent:    {tier: quality, temperature: 0.7, max_tokens: 4096}
   PolicyLLM:        {tier: fast,    temperature: 0.0, max_tokens: 64}
+  # Assistant roles. gpt-oss spends part of max_tokens on hidden reasoning, so keep these generous.
+  Answerer:         {tier: fast,    temperature: 0.2, max_tokens: 2048}
+  Planner:          {tier: fast,    temperature: 0.2, max_tokens: 2048}
+  Builder:          {tier: quality, temperature: 0.2, max_tokens: 6000}
+  Debugger:         {tier: quality, temperature: 0.2, max_tokens: 6000}
+  TestWriter:       {tier: quality, temperature: 0.2, max_tokens: 6000}
+  Reviewer:         {tier: fast,    temperature: 0.1, max_tokens: 2048}
+  Responder:        {tier: fast,    temperature: 0.3, max_tokens: 2048}

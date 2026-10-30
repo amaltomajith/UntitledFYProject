@@ -1,0 +1,6 @@
+Create events.js using CommonJS (module.exports), exporting class EventBus. on(name, fn) subscribes
+and returns a function that unsubscribes. once(name, fn) fires at most once. off(name, fn) removes a
+handler, including one added with once. emit(name, ...args) calls handlers in subscription order
+and returns how many ran. A handler that subscribes or unsubscribes during emit does not affect the
+current emit. If a handler throws, the rest still run, and then emit throws an AggregateError
+holding every error.

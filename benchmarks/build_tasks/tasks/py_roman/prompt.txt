@@ -1,0 +1,4 @@
+Create roman.py with two functions. to_roman(n) converts an integer from 1 to 3999 to a Roman
+numeral string. from_roman(s) converts a valid Roman numeral string back to an integer. Both
+raise ValueError for anything invalid, including 0, 4000, non-canonical numerals such as IIII
+or IC, and lower case.

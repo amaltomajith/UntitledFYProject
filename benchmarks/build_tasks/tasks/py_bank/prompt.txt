@@ -1,0 +1,5 @@
+Create bank.py with class Account(owner, balance=0). deposit(amount) and withdraw(amount) raise
+ValueError for amounts that are not positive. withdraw raises InsufficientFunds, a subclass of
+ValueError that you define, when the balance is too low, and leaves the balance unchanged.
+transfer(other, amount) moves money atomically. history is a list of (kind, amount) tuples where
+kind is "deposit", "withdraw", "transfer_out" or "transfer_in". A failed operation adds nothing.

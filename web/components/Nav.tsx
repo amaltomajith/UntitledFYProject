@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react";
-import { CTA_LABEL, GITHUB_URL, NAV } from "@/lib/content";
+import { APP_LINK, CTA_LABEL, GITHUB_URL, NAV } from "@/lib/content";
 import { scrollToHash } from "./ScrollDirector";
 
 export function Nav() {
@@ -19,6 +20,10 @@ export function Nav() {
               <span className="nav__plus" aria-hidden="true" />
             </a>
           ))}
+          <Link href={APP_LINK.href} className="nav__link">
+            {APP_LINK.label}
+            <span className="nav__plus" aria-hidden="true" />
+          </Link>
         </nav>
         <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="btn btn--primary btn--sm">
           {CTA_LABEL}

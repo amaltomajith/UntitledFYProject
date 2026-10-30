@@ -248,3 +248,30 @@ def test_react_tools_converts_native_apply_patch():
     from puppeteer_code.tools import parse_edit_blocks
     (block,) = parse_edit_blocks(text)
     assert block.file == "calc.py" and "(len(values) - 1)" in block.search and "/ len(values)" in block.replace
+
+
+def test_train_discards_provider_failures_and_resumes(tasks, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from puppeteer_code import bench as bench_mod
+    subset = [t for t in tasks if t.id == "bank_exact"]
+    errors = ["", "RateLimitError: 429 tokens per day"]
+
+    class FakeOrch:
+        def __init__(self, session, policy, config):
+            self.policy = policy
+
+        def run(self, repo, task):
+            self.policy.lr = 99.0                       # stands in for a policy update
+            return SimpleNamespace(rewards={}, to_dict=lambda: {})
+
+    def fake_row(method, task, ep, res):
+        return dict(_fake_rows()[0], task=task.id, provider_error=errors.pop(0) if errors else "")
+
+    monkeypatch.setattr(bench_mod, "CodeOrchestrator", FakeOrch)
+    monkeypatch.setattr(bench_mod, "_row", fake_row)
+    weights, curve = tmp_path / "w.json", tmp_path / "c.json"
+    first = bench_mod.train(subset, "sim", 3, weights, curve, lr=0.5)
+    assert len(first) == 1                                # stopped at the quota, second episode dropped
+    assert json.loads(curve.read_text())["episodes"][0]["episode"] == 0 and weights.exists()
+    second = bench_mod.train(subset, "sim", 2, weights, curve, lr=0.5, resume=True)
+    assert [r["episode"] for r in second] == [0, 1, 2]    # continues the same curve

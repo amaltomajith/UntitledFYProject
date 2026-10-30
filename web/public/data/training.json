@@ -1,0 +1,280 @@
+[
+ {
+  "id": "train-groq",
+  "provider": "groq",
+  "lr": 0.05,
+  "note": "Warm-started from weights trained on the simulator.",
+  "episodes": [
+   {
+    "episode": 0,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3106,
+    "steps": 5,
+    "return": 1.4061059358421437,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 1,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1550,
+    "steps": 5,
+    "return": 1.4169953798336457,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 2,
+    "task": "repo_iv_two_bugs",
+    "success": true,
+    "tokens": 4512,
+    "steps": 5,
+    "return": 1.4020837452901798,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 3,
+    "task": "repo_bank_history",
+    "success": true,
+    "tokens": 4399,
+    "steps": 4,
+    "return": 1.4809683824124804,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 4,
+    "task": "repo_inv_value",
+    "success": true,
+    "tokens": 4029,
+    "steps": 5,
+    "return": 1.40372402469634,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 5,
+    "task": "repo_stats_mean_empty",
+    "success": true,
+    "tokens": 4555,
+    "steps": 6,
+    "return": 1.3336618542357845,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 6,
+    "task": "repo_stats_clamp",
+    "success": true,
+    "tokens": 1338,
+    "steps": 4,
+    "return": 1.4867066932159494,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 7,
+    "task": "repo_text_two_bugs",
+    "success": true,
+    "tokens": 6383,
+    "steps": 7,
+    "return": 1.2642489685806906,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 8,
+    "task": "repo_inv_zero_items",
+    "success": true,
+    "tokens": 2176,
+    "steps": 4,
+    "return": 1.4846554166346546,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 9,
+    "task": "repo_stats_variance",
+    "success": true,
+    "tokens": 2497,
+    "steps": 5,
+    "return": 1.4079236468411445,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 10,
+    "task": "repo_iv_nested",
+    "success": true,
+    "tokens": 3495,
+    "steps": 5,
+    "return": 1.4050245134446868,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 11,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3085,
+    "steps": 5,
+    "return": 1.4062523486375071,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 12,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3337,
+    "steps": 5,
+    "return": 1.4055369094507488,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 13,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1457,
+    "steps": 5,
+    "return": 1.4172829689558342,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 14,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3432,
+    "steps": 5,
+    "return": 1.4055405110212087,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 15,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1649,
+    "steps": 5,
+    "return": 1.4167122124529874,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 16,
+    "task": "repo_iv_two_bugs",
+    "success": true,
+    "tokens": 4208,
+    "steps": 5,
+    "return": 1.402598890701533,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 17,
+    "task": "repo_bank_history",
+    "success": true,
+    "tokens": 2016,
+    "steps": 4,
+    "return": 1.4855071452914004,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 18,
+    "task": "repo_inv_value",
+    "success": true,
+    "tokens": 4397,
+    "steps": 5,
+    "return": 1.4025376983968454,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 19,
+    "task": "repo_stats_mean_empty",
+    "success": true,
+    "tokens": 2651,
+    "steps": 6,
+    "return": 1.3478634714023625,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 20,
+    "task": "repo_stats_clamp",
+    "success": true,
+    "tokens": 1375,
+    "steps": 4,
+    "return": 1.4865009050588098,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 21,
+    "task": "repo_text_two_bugs",
+    "success": true,
+    "tokens": 6623,
+    "steps": 7,
+    "return": 1.2634514771847618,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 22,
+    "task": "repo_inv_zero_items",
+    "success": true,
+    "tokens": 2542,
+    "steps": 4,
+    "return": 1.483775201990173,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 23,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 2975,
+    "steps": 5,
+    "return": 1.4065314207119752,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 24,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1484,
+    "steps": 5,
+    "return": 1.4172949528790324,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 25,
+    "task": "repo_iv_two_bugs",
+    "success": true,
+    "tokens": 4411,
+    "steps": 5,
+    "return": 1.402496904393616,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 26,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3185,
+    "steps": 5,
+    "return": 1.405986348675693,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 27,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1443,
+    "steps": 5,
+    "return": 1.4173531096814125,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 28,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3108,
+    "steps": 5,
+    "return": 1.4062540122703653,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 29,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1439,
+    "steps": 5,
+    "return": 1.4173409289544248,
+    "terminal_reward": 1.6
+   }
+  ]
+ }
+]

@@ -1,0 +1,5 @@
+Create lru.py with class LRUCache(capacity). get(key, default=None) returns the value and marks it
+recently used. put(key, value) stores it, evicting the least recently used key when over capacity;
+updating an existing key also marks it recently used. len(cache) and `key in cache` work, and `in`
+does not change the order. stats() returns {"hits": h, "misses": m, "evictions": e}. A capacity
+below 1 raises ValueError.

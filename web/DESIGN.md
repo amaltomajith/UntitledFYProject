@@ -42,6 +42,38 @@ Scene colours mirror these by hand: `BODY` and the face gradient in `AgentTiles.
 - **Tile chip**: DOM label that follows the hovered 3D tile (`03 CODER`).
 - **Cell** (`.cell`): glass panel with a pointer-following border spotlight.
 
+## App pages (console, runs, benchmarks, docs, research)
+
+- Route group `app/(app)` uses `AppShell`: a sticky bar, the cone at low opacity, and no WebGL, GSAP or
+  Lenis. Those stay in `app/(marketing)`. The app is denser than the landing page and has no scroll
+  choreography.
+- **Panel** (`.panel`): the glass surface for app content. Use `.cell` only on marketing pages.
+- `--good` `#7ee2a8` and `--bad` `#ffb4b4` mark state only (server live, tests pass, a diff line, an
+  error). They always ship with a word or a `+`/`-` sign, and are never a chart series.
+- Every data view has loading (`Skeleton`), empty, error and offline states (`Notice`, `LocalRun`).
+- Class names: the landing page owns `.line`, `.step` and `.hero`. Search `globals.css` before adding
+  a generic class name, because `.motion-ok .line` once pushed a chart line out of its plot.
+
+## IDE (`app/(ide)/ide`, `components/ide/`)
+
+- Route group `app/(ide)` has no `AppShell`: it is a full-height workspace with a file tree, editor tabs,
+  a bottom panel and the chat. State lives in `lib/ide.ts` (`applyEvent` reduces the shared event stream).
+- All classes start with `ide`, in the "ide" section of `globals.css`.
+- The chat speaks to a non-programmer: plain progress first, agent names only under "Show details".
+- Below the IDE's minimum width it shows a notice instead of a squeezed layout. The chat, plan and Undo
+  stay usable.
+- `/console` still works with `pcode serve` but is out of the nav. The IDE is the app's front door.
+
+## Charts (`components/app/Charts.tsx`)
+
+- One measure, one axis. Two measures means two charts.
+- `--accent-hi` marks Puppeteer-Code; other methods use `--ink-3`. Identity also comes from the label,
+  so there is no categorical palette and no legend.
+- Marks are sharp, overriding the usual rounded bar ends, because all UI here has radius 0.
+- Bars carry their value in text. Columns and lines get a hover tooltip, and every chart with no
+  printed values has a table behind it in `<details>` or in the step timeline.
+- Comparisons between methods use the shared-task table, computed from raw rows on the page.
+
 ## Motion rules
 
 - Scroll drives everything through GSAP ScrollTrigger + Lenis. No `scroll` listeners, no React state
