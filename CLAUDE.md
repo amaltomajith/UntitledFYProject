@@ -279,8 +279,11 @@ site at https://puppeteer-code.vercel.app (`web/out`, static, no live IDE). Demo
 `runs/puppeteer-code-demo.mp4`, 66 s, silent, 800x450. It is gitignored, so it must be uploaded by hand.
 
 **Rename, 2026-10-31.** The product is **CompactCode** in the frontend (`web/`) by the owner's decision.
-The site is at https://compactcode.vercel.app, and https://puppeteer-code.vercel.app keeps working. The
-Vercel project is still named `puppeteer-code`. Deliberately unchanged:
+The public site is still https://puppeteer-code.vercel.app; it serves the new name. The Vercel project is
+still named `puppeteer-code`. https://compactcode.vercel.app is an alias on one deployment, not a project
+domain, so it redirects visitors to Vercel's login and later deploys will not update it. To finish, the
+owner adds it to the project (Vercel dashboard, or `vercel domains add compactcode.vercel.app` from
+`web/out`), then redeploys. Deliberately unchanged:
 - real identifiers the docs must match: `pcode`, `python -m puppeteer_code`, `puppeteer_fix`, `x-pcode-token`;
 - the thesis name Puppeteer++, the paper's term "puppeteer", and the benchmark names (PCodeBench-*);
 - the Python side still says Puppeteer-Code: terminal UI, `report.py`, MCP server, README and this file's
