@@ -9,19 +9,28 @@ const TOKEN_KEY = "pcode-ide-token";
 const MAX_LINES = 2000;
 const RETRY_MS = 1500;
 
+export type Mode = "plan" | "ask" | "auto";
+export type Effort = "fast" | "normal" | "think" | "deep";
+
 export type IdeState = {
   keys: Record<string, boolean>;
   key_help: Record<string, string>;
   provider: string | null;
   project: string | null;
   session_id: string | null;
-  mode: "ask" | "auto";
+  mode: Mode;
+  effort: Effort;
+  pending_plan: boolean;
+  private: { on: boolean; claim: string; outside: string[]; warning: string; setup: boolean };
   busy: boolean;
   models: Record<string, string>;
   can_undo: boolean;
   tokens: number;
   seq: number;
 };
+
+export type SavedChat = { id: string; saved: number; title: string };
+export type TermLine = { kind: "cmd" | "out" | "sys"; text: string };
 
 export type Item =
   | { kind: "user"; text: string }
@@ -31,6 +40,9 @@ export type Item =
   | { kind: "reply"; text: string }
   | { kind: "check"; ok: boolean; verified: boolean; summary: string }
   | { kind: "note"; tone: "info" | "warn" | "bad"; text: string }
+  | { kind: "output"; text: string }
+  | { kind: "sessions"; rows: SavedChat[] }
+  | { kind: "help" }
   | {
       kind: "done";
       status: string;
@@ -47,7 +59,7 @@ export type View = {
   busy: boolean;
   requestTokens: number;
   totalTokens: number;
-  terminal: string[];
+  terminal: TermLine[];
   checks: { ok: boolean; summary: string }[];
   preview: string | null;
   changed: Record<string, string>;
@@ -78,6 +90,8 @@ function addToWork(items: Item[], line: string): Item[] {
   return [...items.slice(0, -1), { ...last, details: [...last.details, line] }];
 }
 
+const addToTerminal = (view: View, line: TermLine) => [...view.terminal, line].slice(-MAX_LINES);
+
 function closeApprovals(items: Item[]): Item[] {
   return items.map((it) => (it.kind === "approval" && it.answer === null ? { ...it, answer: false } : it));
 }
@@ -97,7 +111,8 @@ export function applyEvent(view: View, event: Event): View {
       return { ...next, items: [...items, { kind: "plan", steps: event.steps }] };
     case "tool_start": {
       const detail = event.args?.path ?? event.args?.command ?? event.args?.pattern ?? "";
-      return { ...next, items: addToWork(items, `${event.tool} ${detail}`.trim()) };
+      const terminal = event.args?.command ? addToTerminal(view, { kind: "cmd", text: `${event.args.command}\n` }) : view.terminal;
+      return { ...next, terminal, items: addToWork(items, `${event.tool} ${detail}`.trim()) };
     }
     case "tool_end":
       return event.ok ? next : { ...next, items: addToWork(items, String(event.summary).split("\n")[0]) };
@@ -117,6 +132,8 @@ export function applyEvent(view: View, event: Event): View {
     }
     case "notice":
       return { ...next, items: [...items, { kind: "note", tone: "warn", text: event.text }] };
+    case "effort":
+      return { ...next, items: [...items, { kind: "note", tone: "info", text: `${event.level}: ${event.how}` }] };
     case "error":
       return { ...next, items: [...items, { kind: "note", tone: "bad", text: event.message }] };
     case "verify":
@@ -142,11 +159,31 @@ export function applyEvent(view: View, event: Event): View {
         items: items.map((it) => (it.kind === "approval" && it.id === event.id ? { ...it, answer: event.approved } : it)),
       };
     case "command_start":
-      return { ...next, terminal: [...view.terminal, `$ ${event.command}\n`].slice(-MAX_LINES) };
+      return { ...next, terminal: addToTerminal(view, { kind: "cmd", text: `${event.command}\n` }) };
     case "command_output":
-      return { ...next, terminal: [...view.terminal, event.text].slice(-MAX_LINES) };
+      return { ...next, terminal: addToTerminal(view, { kind: "out", text: event.text }) };
     case "command_end":
-      return { ...next, fileTick: view.fileTick + 1 };
+      return {
+        ...next,
+        fileTick: view.fileTick + 1,
+        terminal: event.code ? addToTerminal(view, { kind: "sys", text: `Exited with code ${event.code}.\n` }) : view.terminal,
+      };
+    case "print":
+      return { ...next, items: [...items, { kind: "output", text: event.text }] };
+    case "sessions":
+      return { ...next, items: [...items, { kind: "sessions", rows: event.rows }] };
+    case "help":
+      return { ...next, items: [...items, { kind: "help" }] };
+    case "cleared":
+      return { ...next, items: [], changed: {}, requestTokens: 0 };
+    case "resumed":
+      return {
+        ...next,
+        changed: {},
+        items: event.history.map((m: { role: string; content: string }): Item =>
+          m.role === "user" ? { kind: "user", text: m.content } : { kind: "reply", text: m.content },
+        ),
+      };
     case "preview":
       return { ...next, preview: event.url };
     case "usage":
@@ -278,7 +315,7 @@ export function useIde(token: string) {
           setState(event.state);
         } else {
           dispatch(event);
-          if (event.type === "done" || event.type === "undone" || event.type === "opened") void refresh();
+          if (["done", "undone", "opened", "cleared", "resumed"].includes(event.type)) void refresh();
         }
       };
       ws.onclose = (closed) => {
@@ -304,5 +341,8 @@ export function useIde(token: string) {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message));
   }, []);
 
-  return { view, state, setState, link, send, refresh };
+  // Slash command output stays in this tab: it is never sent to the server or to the model.
+  const local = useCallback((event: Event) => dispatch(event), []);
+
+  return { view, state, setState, link, send, refresh, local };
 }

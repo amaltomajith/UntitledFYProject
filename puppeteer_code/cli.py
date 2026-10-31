@@ -21,6 +21,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from puppeteer_code.privacy import PrivacyError
+
 for _stream in (sys.stdout, sys.stderr):
     try:   # bars and arrows must not crash a cp1252 Windows console or a pipe
         _stream.reconfigure(encoding="utf-8", errors="replace")
@@ -126,7 +128,7 @@ def cmd_fix(args) -> int:
     session = make_session(args)
     policy = make_policy(args.policy, session=session, weights=args.weights, seed=args.seed)
     config = RunConfig(max_steps=args.max_steps, tdd=args.tdd, budget_usd=args.budget_usd,
-                       budget_tokens=args.budget_tokens, explore=not args.no_explore,
+                       budget_tokens=args.budget_tokens, explore=not args.no_explore and not session.private,
                        test_timeout=args.test_timeout)
     say(f"Puppeteer-Code  provider={session.provider}  policy={policy.name}  "
         f"models={session.tiers}")
@@ -209,6 +211,27 @@ def cmd_chat(args) -> int:
     return run_chat(args)
 
 
+def cmd_private_setup(args) -> int:
+    from puppeteer_code.sandbox import AppContainerRunner, load_state, remove_private, setup_private
+
+    if args.remove:
+        remove_private(say=say)
+        say("Private's sandbox is removed.")
+        return 0
+    try:
+        state = setup_private(say=say)
+    except OSError as e:
+        say(str(e), "red")
+        return 1
+    runner = AppContainerRunner(load_state(), ".")
+    if not runner.verify():
+        say("Setup finished, but the check that commands have no network did not pass.", "red")
+        say("Private will say commands are not sandboxed.", "red")
+        return 1
+    say(f"Done. Commands in Private now run with no network. Sandbox folder: {state['folder']}", "green")
+    return 0
+
+
 # ── web ──────────────────────────────────────────────────────────────────────
 
 def cmd_serve(args) -> int:
@@ -232,7 +255,7 @@ def cmd_ide(args) -> int:
     if not (ROOT / "web" / "out" / "ide.html").exists():
         say("The IDE page is not built yet. Run: cd web && npm ci && npm run build", "red")
         return 1
-    hub = make_hub(args.provider, args.mode, args.cache)
+    hub = make_hub(args.provider, args.mode, args.cache, args.effort, args.private)
     if args.folder:
         hub.open(args.folder)
     url = f"http://127.0.0.1:{args.port}/ide#token={hub.token}"
@@ -263,15 +286,22 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def provider_args(sp):
-        sp.add_argument("--provider", default=None, help="nebius (default) | groq | mock")
+        sp.add_argument("--provider", default=None, help="nebius (default) | groq | local | mock")
+        sp.add_argument("--private", action="store_true", help="run on this computer only, on Ollama")
         sp.add_argument("--cache", default=None, help="directory for the on-disk response cache")
 
     c = sub.add_parser("chat", help="talk to the assistant in a folder (the default command)")
     provider_args(c)
     c.add_argument("--folder", default=".")
-    c.add_argument("--mode", default="ask", choices=["ask", "auto"], help="ask before commands, or do not")
+    c.add_argument("--mode", default="ask", choices=["plan", "ask", "auto"],
+                   help="plan changes nothing until you approve; ask checks before commands; auto does not")
+    c.add_argument("--effort", default="normal", choices=["fast", "normal", "think", "deep"])
     c.add_argument("--resume", default=None, help="id of an earlier conversation")
     c.set_defaults(func=cmd_chat)
+
+    ps = sub.add_parser("private-setup", help="set up the network block for commands in Private (Windows)")
+    ps.add_argument("--remove", action="store_true", help="undo it")
+    ps.set_defaults(func=cmd_private_setup)
 
     m = sub.add_parser("models", help="show the provider catalog and resolved tiers")
     provider_args(m)
@@ -316,7 +346,9 @@ def build_parser() -> argparse.ArgumentParser:
     provider_args(id_)
     id_.add_argument("--folder", default=None, help="open this folder straight away")
     id_.add_argument("--port", type=int, default=8765)
-    id_.add_argument("--mode", default="ask", choices=["ask", "auto"], help="ask before commands, or do not")
+    id_.add_argument("--mode", default="ask", choices=["plan", "ask", "auto"],
+                     help="plan changes nothing until you approve; ask checks before commands; auto does not")
+    id_.add_argument("--effort", default="normal", choices=["fast", "normal", "think", "deep"])
     id_.add_argument("--no-browser", action="store_true", help="print the link but do not open it")
     id_.set_defaults(func=cmd_ide)
 
@@ -340,8 +372,16 @@ def main(argv=None) -> int:
     if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
         argv.insert(0, "chat")
     args = build_parser().parse_args(argv)
+    if getattr(args, "private", False):
+        if args.provider not in (None, "local"):
+            say(f"--private cannot use --provider {args.provider}.", "red")
+            return 1
+        args.provider = "local"
     try:
         return args.func(args)
+    except PrivacyError as e:
+        say(str(e), "red")
+        return 1
     except EnvironmentError as e:
         if "API_KEY" not in str(e):
             raise

@@ -23,7 +23,8 @@ dependencies = [
 [project.optional-dependencies]
 lint = ["ruff>=0.4"]
 mcp = ["mcp>=1.10"]
-web = ["fastapi>=0.111.0", "uvicorn>=0.29.0"]
+web = ["fastapi>=0.111.0", "uvicorn>=0.29.0", "psutil>=5.9", "pywinpty>=3.1; sys_platform == 'win32'",
+       "ptyprocess>=0.7; sys_platform != 'win32'"]
 
 [project.scripts]
 pcode = "puppeteer_code.cli:main"

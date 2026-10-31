@@ -1,0 +1,13 @@
+CompactCode (Puppeteer-Code)
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes third-party material:
+
+- Codicons, Copyright (c) Microsoft Corporation, CC-BY-4.0
+  https://github.com/microsoft/vscode-codicons
+  Used unchanged in the browser IDE, through the @vscode/codicons package.
+
+- Material Icon Theme, MIT licence
+  https://github.com/material-extensions/vscode-material-icon-theme
+  A subset of its SVG files is in web/public/file-icons/, with the licence in
+  web/public/file-icons/LICENSE.txt.

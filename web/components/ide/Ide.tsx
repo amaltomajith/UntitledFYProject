@@ -3,26 +3,58 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowClockwise, X } from "@phosphor-icons/react";
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type LayoutStorage } from "react-resizable-panels";
 import { Command } from "@/components/Command";
 import { IDE } from "@/lib/content";
-import { IdeError, ideCall, post, readToken, useIde } from "@/lib/ide";
-import { BottomPanel } from "./BottomPanel";
+import { IdeError, ideCall, post, readToken, useIde, type IdeState, type Mode } from "@/lib/ide";
+import { BottomPanel, type BottomTab } from "./BottomPanel";
 import { Chat } from "./Chat";
+import { Codicon } from "./Codicon";
+import { FileIcon } from "./FileIcon";
 import { FileTree } from "./FileTree";
 import { Setup } from "./Setup";
+import { ActivityBar, GitView, SearchView, TestsView, type SideView } from "./SideViews";
+import { dropInto, shellIcon, TerminalSlot } from "./terminal/TerminalPanel";
+import { DRAG_TYPE, useTerminals } from "./terminal/useTerminals";
+import { useCommands } from "./useCommands";
 
 const Loading = () => <div className="ide-pane__note">{IDE.editor.loading}</div>;
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false, loading: Loading });
 const DiffEditor = dynamic(() => import("./CodeEditor").then((m) => m.DiffEditor), { ssr: false, loading: Loading });
 
 type FileTab = { kind: "file"; path: string; content: string | null; saved: string; reason?: string };
-type Tab = FileTab | { kind: "changes" } | { kind: "preview" };
+type Tab = FileTab | { kind: "changes" } | { kind: "preview" } | { kind: "terminal"; id: string };
 type Changes = { request: string | null; files: { path: string; before: string | null; after: string | null }[] };
 type FileReply = { path: string; content: string | null; reason?: string };
 
-const tabId = (tab: Tab) => (tab.kind === "file" ? tab.path : tab.kind);
-const tabName = (tab: Tab) => (tab.kind === "file" ? tab.path.split("/").pop() : IDE.editor[tab.kind]);
+const SIDE_MIN = 170;
+const tabId = (tab: Tab) => (tab.kind === "file" ? tab.path : tab.kind === "terminal" ? `terminal:${tab.id}` : tab.kind);
+
+// Saved panel sizes are a convenience; a blocked localStorage just means the defaults.
+const layouts: LayoutStorage = {
+  getItem: (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Nothing to do: the layout is simply not remembered.
+    }
+  },
+};
+
+/** `C:\work\app>` on Windows, `app $` elsewhere. A deep path keeps its drive and last folder. */
+function terminalPrompt(project: string) {
+  const parts = project.split(/[\\/]/).filter(Boolean);
+  const leaf = parts[parts.length - 1] ?? project;
+  if (!/^[A-Za-z]:/.test(project)) return `${leaf} $`;
+  return `${project.length > 36 ? `${parts[0]}\\...\\${leaf}` : project}>`;
+}
 
 function ChangesPane({ token, tick }: { token: string; tick: number }) {
   const [changes, setChanges] = useState<Changes | null>(null);
@@ -53,15 +85,80 @@ function ChangesPane({ token, tick }: { token: string; tick: number }) {
 }
 
 function Workspace({ token }: { token: string }) {
-  const { view, state, setState, link, send, refresh } = useIde(token);
+  const { view, state, setState, link, send, refresh, local } = useIde(token);
   const [files, setFiles] = useState<string[]>([]);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [side, setSide] = useState<SideView>("files");
+  const [sideOpen, setSideOpen] = useState(true);
+  const [bottomOpen, setBottomOpen] = useState(true);
+  const [maximised, setMaximised] = useState(false);
+  const [bottomTab, setBottomTab] = useState<BottomTab>("terminal");
+  const [reveal, setReveal] = useState<{ path: string; line: number } | null>(null);
+  const sidePanel = usePanelRef();
+  const bottomPanel = usePanelRef();
+  const editorPanel = usePanelRef();
+  const mainLayout = useDefaultLayout({ id: "ide-main", storage: layouts });
+  const centreLayout = useDefaultLayout({ id: "ide-centre", storage: layouts });
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const project = state?.project ?? null;
+
+  const show = (tab: Tab) => {
+    setTabs((all) => (all.some((t) => tabId(t) === tabId(tab)) ? all : [...all, tab]));
+    setActive(tabId(tab));
+  };
+
+  const dropTab = (id: string) => {
+    const left = tabsRef.current.filter((t) => tabId(t) !== id);
+    setTabs(left);
+    setActive((now) => (now === id ? (left.length ? tabId(left[left.length - 1]) : null) : now));
+  };
+
+  const terminals = useTerminals({
+    token,
+    project,
+    wanted: bottomOpen && bottomTab === "terminal",
+    onDock: (id) => show({ kind: "terminal", id }),
+    onRemoved: (id) => dropTab(`terminal:${id}`),
+  });
+
+  const toggleBottom = useCallback(() => {
+    const panel = bottomPanel.current;
+    if (panel?.isCollapsed()) panel.expand();
+    else panel?.collapse();
+  }, [bottomPanel]);
+
+  const toggleMaximised = () => {
+    const panel = editorPanel.current;
+    if (panel?.isCollapsed()) panel.expand();
+    else panel?.collapse();
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.key !== "`") return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (bottomPanel.current?.isCollapsed()) bottomPanel.current.expand();
+        setBottomTab("terminal");
+        void terminals.create();
+      } else {
+        toggleBottom();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleBottom, terminals.create, bottomPanel]);
+
+  const pickView = (next: SideView) => {
+    const panel = sidePanel.current;
+    if (next === side && sideOpen) panel?.collapse();
+    else if (!sideOpen) panel?.expand();
+    setSide(next);
+  };
 
   const loadTree = useCallback(async () => {
     try {
@@ -103,12 +200,8 @@ function Workspace({ token }: { token: string }) {
     setActive("preview");
   }, [view.preview]);
 
-  const show = (tab: Tab) => {
-    setTabs((all) => (all.some((t) => tabId(t) === tabId(tab)) ? all : [...all, tab]));
-    setActive(tabId(tab));
-  };
-
-  const openFile = async (path: string) => {
+  const openFile = async (path: string, line?: number) => {
+    if (line) setReveal({ path, line });
     if (tabs.some((t) => tabId(t) === path)) {
       setActive(path);
       return;
@@ -121,10 +214,9 @@ function Workspace({ token }: { token: string }) {
     }
   };
 
-  const closeTab = (id: string) => {
-    const left = tabs.filter((t) => tabId(t) !== id);
-    setTabs(left);
-    if (active === id) setActive(left.length ? tabId(left[left.length - 1]) : null);
+  const closeTab = (tab: Tab) => {
+    if (tab.kind === "terminal") void terminals.kill(tab.id);
+    else dropTab(tabId(tab));
   };
 
   const save = async (tab: FileTab) => {
@@ -157,6 +249,8 @@ function Workspace({ token }: { token: string }) {
 
   const runCommand = async (command: string) => {
     setPanelError(null);
+    setBottomTab("output");
+    if (bottomPanel.current?.isCollapsed()) bottomPanel.current.expand();
     try {
       await post(token, "command", { command });
     } catch (e) {
@@ -164,7 +258,22 @@ function Workspace({ token }: { token: string }) {
     }
   };
 
-  const setMode = async (mode: "ask" | "auto") => setState(await post(token, "mode", { mode }));
+  const setMode = async (mode: Mode) => setState(await post(token, "mode", { mode }));
+  const setPrivate = (on: boolean) => void commands.run(`/private ${on ? "on" : "off"}`);
+
+  const commands = useCommands({
+    token,
+    view,
+    state: state as IdeState,
+    setState,
+    send,
+    local,
+    refresh,
+    setMode,
+    showChanges: () => show({ kind: "changes" }),
+    showPreview: () => show({ kind: "preview" }),
+    pickFolder: () => setPicking(true),
+  });
 
   if (link === "denied") {
     return <NoToken />;
@@ -192,6 +301,14 @@ function Workspace({ token }: { token: string }) {
 
   const tab = tabs.find((t) => tabId(t) === active) ?? null;
   const locked = view.busy;
+  const rowOf = (id: string) => terminals.rows.find((row) => row.id === id);
+  const tabName = (t: Tab) => {
+    if (t.kind === "file") return t.path.split("/").pop() ?? t.path;
+    if (t.kind === "terminal") return rowOf(t.id)?.name ?? IDE.editor.terminal;
+    return IDE.editor[t.kind];
+  };
+  const dragging = terminals.dragging;
+  const canDock = dragging !== null && !terminals.docked.includes(dragging);
 
   return (
     <div className="ide">
@@ -203,17 +320,221 @@ function Workspace({ token }: { token: string }) {
         <button type="button" className="ide__project" title={project} onClick={() => setPicking(true)} disabled={view.busy}>
           {project.split(/[\\/]/).filter(Boolean).pop()}
         </button>
+      </header>
+      <div className="ide__small">
+        <p>{IDE.small}</p>
+        <Command label={IDE.smallCommand} cmd="pcode" />
+      </div>
+      <div className="ide__body">
+        <ActivityBar view={side} open={sideOpen} onPick={pickView} />
+        <Group
+          orientation="horizontal"
+          id="ide-main"
+          className="ide__panels"
+          defaultLayout={mainLayout.defaultLayout}
+          onLayoutChanged={mainLayout.onLayoutChanged}
+        >
+          <Panel
+            id="side"
+            panelRef={sidePanel}
+            defaultSize={240}
+            minSize={SIDE_MIN}
+            maxSize="45%"
+            collapsible
+            groupResizeBehavior="preserve-pixel-size"
+            onResize={(size) => setSideOpen(size.inPixels > 0)}
+          >
+            <aside className="ide__left" aria-label={IDE.activity[side]}>
+              <div className="ide__head">
+                <span>{IDE.activity[side]}</span>
+                {side === "files" ? (
+                  <button type="button" aria-label={IDE.tree.refresh} title={IDE.tree.refresh} onClick={() => void loadTree()}>
+                    <Codicon name="refresh" />
+                  </button>
+                ) : null}
+              </div>
+              {side === "files" ? (
+                <FileTree
+                  files={files}
+                  changed={view.changed}
+                  active={tab?.kind === "file" ? tab.path : null}
+                  onOpen={(path) => void openFile(path)}
+                />
+              ) : null}
+              {side === "search" ? <SearchView token={token} onOpen={(path, line) => void openFile(path, line)} /> : null}
+              {side === "git" ? <GitView token={token} tick={view.fileTick} onOpen={(path) => void openFile(path)} /> : null}
+              {side === "tests" ? <TestsView checks={view.checks} /> : null}
+            </aside>
+          </Panel>
+          <Separator className="ide-sash" />
+          <Panel id="centre" minSize={320}>
+            <Group
+              orientation="vertical"
+              id="ide-centre"
+              defaultLayout={centreLayout.defaultLayout}
+              onLayoutChanged={centreLayout.onLayoutChanged}
+            >
+              <Panel
+                id="editor"
+                panelRef={editorPanel}
+                minSize={120}
+                collapsible
+                onResize={(size) => setMaximised(size.inPixels === 0)}
+              >
+                <main className="ide-main">
+                  <div className="ide-tabs" role="tablist" aria-label={IDE.editor.tabs}>
+                    {tabs.map((t) => {
+                      const id = tabId(t);
+                      const dirty = t.kind === "file" && t.content !== t.saved;
+                      const name = tabName(t);
+                      return (
+                        <span
+                          key={id}
+                          className="ide-tab-wrap"
+                          data-active={id === active}
+                          draggable={t.kind === "terminal"}
+                          onDragStart={(e) => {
+                            if (t.kind !== "terminal") return;
+                            e.dataTransfer.setData(DRAG_TYPE, t.id);
+                            e.dataTransfer.effectAllowed = "move";
+                            terminals.setDragging(t.id);
+                          }}
+                          onDragEnd={() => terminals.setDragging(null)}
+                        >
+                          <button type="button" role="tab" aria-selected={id === active} className="ide-tab" onClick={() => setActive(id)}>
+                            {t.kind === "file" ? <FileIcon name={name} /> : null}
+                            {t.kind === "terminal" ? <Codicon name={shellIcon(rowOf(t.id)?.icon ?? "terminal")} /> : null}
+                            {name}
+                            {dirty ? <span className="ide-tab__dirty" title={IDE.editor.unsaved} aria-label={IDE.editor.unsaved}>●</span> : null}
+                          </button>
+                          {t.kind === "terminal" ? (
+                            <button
+                              type="button"
+                              className="ide-tab__close"
+                              aria-label={IDE.editor.toPanel(name)}
+                              title={IDE.editor.toPanel(name)}
+                              onClick={() => terminals.undock(t.id)}
+                            >
+                              <Codicon name="arrow-down" />
+                            </button>
+                          ) : null}
+                          <button type="button" className="ide-tab__close" aria-label={IDE.editor.close(name)} onClick={() => closeTab(t)}>
+                            <Codicon name="close" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {locked && tab?.kind === "file" ? <p className="ide-lock">{IDE.editor.locked}</p> : null}
+                  <div className="ide-pane">
+                    {tab === null ? <div className="ide-pane__note">{IDE.editor.empty}</div> : null}
+                    {tab?.kind === "changes" ? <ChangesPane token={token} tick={view.fileTick} /> : null}
+                    {tab?.kind === "preview" && view.preview ? (
+                      <div className="ide-preview">
+                        <p>
+                          <a href={view.preview} target="_blank" rel="noreferrer">
+                            {view.preview}
+                          </a>
+                        </p>
+                        <iframe title={IDE.editor.preview} src={view.preview} sandbox="allow-scripts allow-forms allow-same-origin allow-modals" />
+                      </div>
+                    ) : null}
+                    {tab?.kind === "preview" && !view.preview ? <div className="ide-pane__note">{state.private.on ? IDE.private.noPreview : IDE.editor.noPreview}</div> : null}
+                    {tab?.kind === "file" && tab.content === null ? (
+                      <div className="ide-pane__note">{tab.reason === "binary" ? IDE.editor.binary : IDE.editor.tooLarge}</div>
+                    ) : null}
+                    {tab?.kind === "file" && tab.content !== null ? (
+                      <CodeEditor
+                        path={tab.path}
+                        value={tab.content}
+                        readOnly={locked}
+                        reveal={reveal?.path === tab.path ? reveal : null}
+                        onChange={(content) =>
+                          setTabs((all) => all.map((t) => (t.kind === "file" && t.path === tab.path ? { ...t, content } : t)))
+                        }
+                        onSave={() => void save(tabsRef.current.find((t) => tabId(t) === tab.path) as FileTab)}
+                      />
+                    ) : null}
+                    {tab?.kind === "terminal" ? <TerminalSlot key={tab.id} id={tab.id} focus /> : null}
+                    {canDock ? (
+                      <div className="ide-drop" {...dropInto(terminals.dock)}>
+                        <span>{IDE.editor.dropEditor}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </main>
+              </Panel>
+              <Separator className="ide-sash" />
+              <Panel
+                id="bottom"
+                panelRef={bottomPanel}
+                defaultSize="34%"
+                minSize={120}
+                collapsible
+                onResize={(size) => setBottomOpen(size.inPixels > 0)}
+              >
+                <BottomPanel
+                  view={view}
+                  terminals={terminals}
+                  tab={bottomTab}
+                  onTab={setBottomTab}
+                  error={panelError}
+                  prompt={terminalPrompt(project)}
+                  maximised={maximised}
+                  onMaximise={toggleMaximised}
+                  onClose={toggleBottom}
+                />
+              </Panel>
+            </Group>
+          </Panel>
+          <Separator className="ide-sash" />
+          <Panel id="chat" defaultSize={380} minSize={300} maxSize="50%" groupResizeBehavior="preserve-pixel-size">
+            <Chat
+              view={view}
+              model={state.models.quality ?? state.provider ?? ""}
+              canUndo={state.can_undo}
+              claim={state.private.on ? [state.private.claim, state.private.warning].filter(Boolean).join(" ") : null}
+              canApprove={state.pending_plan}
+              onApprove={() => void commands.run("/approve")}
+              onSend={(message, mode) => send({ type: "send", message, mode })}
+              onSlash={(line) => void commands.run(line)}
+              onShell={(command) => void runCommand(command)}
+              onCancel={() => send({ type: "cancel" })}
+              onAnswer={(id, approved) => send({ type: "answer", id, approved })}
+              onUndo={() => void undo().then(refresh)}
+              onReview={() => show({ kind: "changes" })}
+              onApply={(runId) => void applyFix(runId)}
+              onResume={(id) => void commands.resume(id).catch((e) => setPanelError(e instanceof IdeError ? e.message : IDE.setup.failed))}
+            />
+          </Panel>
+        </Group>
+      </div>
+      <footer className="ide-status" aria-label={IDE.status.label}>
+        <span className="ide-status__link" data-state={link} role="status">
+          <Codicon name={link === "open" ? "pass" : "warning"} />
+          {link === "open" ? IDE.status.connected : IDE.lost}
+        </span>
         <span className="ide__spacer" />
-        {link === "lost" ? (
-          <span className="ide__lost" role="status">
-            {IDE.lost}
-          </span>
-        ) : null}
-        <span className="ide__tokens" title={IDE.tokensHint}>
+        <button type="button" title={IDE.status.terminalHint} aria-pressed={bottomOpen} onClick={toggleBottom}>
+          <Codicon name="terminal" />
+          {IDE.status.terminal}
+        </button>
+        <button
+          type="button"
+          className="ide-status__private"
+          aria-pressed={state.private.on}
+          title={state.private.on ? IDE.private.hintOn : IDE.private.hintOff}
+          disabled={view.busy}
+          onClick={() => setPrivate(!state.private.on)}
+        >
+          <Codicon name="lock" />
+          {IDE.private.label}
+        </button>
+        <span className="ide__tokens" title={state.private.on ? IDE.tokensHintLocal : IDE.tokensHint}>
           {IDE.tokens(view.totalTokens || state.tokens)}
         </span>
         <div className="ide__mode" role="group" aria-label={IDE.mode.label}>
-          {(["ask", "auto"] as const).map((mode) => (
+          {(["plan", "ask", "auto"] as const).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -226,89 +547,7 @@ function Workspace({ token }: { token: string }) {
             </button>
           ))}
         </div>
-      </header>
-      <div className="ide__small">
-        <p>{IDE.small}</p>
-        <Command label={IDE.smallCommand} cmd="pcode" />
-      </div>
-      <div className="ide__body">
-        <aside className="ide__left" aria-label={IDE.tree.label}>
-          <div className="ide__head">
-            <span>{IDE.tree.title}</span>
-            <button type="button" aria-label={IDE.tree.refresh} onClick={() => void loadTree()}>
-              <ArrowClockwise size={13} aria-hidden="true" />
-            </button>
-          </div>
-          <FileTree
-            files={files}
-            changed={view.changed}
-            active={tab?.kind === "file" ? tab.path : null}
-            onOpen={(path) => void openFile(path)}
-          />
-        </aside>
-        <div className="ide__centre">
-          <main className="ide-main">
-            <div className="ide-tabs" role="tablist" aria-label={IDE.editor.tabs}>
-              {tabs.map((t) => {
-                const id = tabId(t);
-                const dirty = t.kind === "file" && t.content !== t.saved;
-                return (
-                  <span key={id} className="ide-tab-wrap" data-active={id === active}>
-                    <button type="button" role="tab" aria-selected={id === active} className="ide-tab" onClick={() => setActive(id)}>
-                      {tabName(t)}
-                      {dirty ? <span className="ide-tab__dirty"> ({IDE.editor.unsaved})</span> : null}
-                    </button>
-                    <button type="button" className="ide-tab__close" aria-label={IDE.editor.close(String(tabName(t)))} onClick={() => closeTab(id)}>
-                      <X size={11} aria-hidden="true" />
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-            {locked && tab?.kind === "file" ? <p className="ide-lock">{IDE.editor.locked}</p> : null}
-            <div className="ide-pane">
-              {tab === null ? <div className="ide-pane__note">{IDE.editor.empty}</div> : null}
-              {tab?.kind === "changes" ? <ChangesPane token={token} tick={view.fileTick} /> : null}
-              {tab?.kind === "preview" && view.preview ? (
-                <div className="ide-preview">
-                  <p>
-                    <a href={view.preview} target="_blank" rel="noreferrer">
-                      {view.preview}
-                    </a>
-                  </p>
-                  <iframe title={IDE.editor.preview} src={view.preview} sandbox="allow-scripts allow-forms allow-same-origin allow-modals" />
-                </div>
-              ) : null}
-              {tab?.kind === "preview" && !view.preview ? <div className="ide-pane__note">{IDE.editor.noPreview}</div> : null}
-              {tab?.kind === "file" && tab.content === null ? (
-                <div className="ide-pane__note">{tab.reason === "binary" ? IDE.editor.binary : IDE.editor.tooLarge}</div>
-              ) : null}
-              {tab?.kind === "file" && tab.content !== null ? (
-                <CodeEditor
-                  path={tab.path}
-                  value={tab.content}
-                  readOnly={locked}
-                  onChange={(content) =>
-                    setTabs((all) => all.map((t) => (t.kind === "file" && t.path === tab.path ? { ...t, content } : t)))
-                  }
-                  onSave={() => void save(tabsRef.current.find((t) => tabId(t) === tab.path) as FileTab)}
-                />
-              ) : null}
-            </div>
-          </main>
-          <BottomPanel view={view} error={panelError} onCommand={(c) => void runCommand(c)} />
-        </div>
-        <Chat
-          view={view}
-          canUndo={state.can_undo}
-          onSend={(message, mode) => send({ type: "send", message, mode })}
-          onCancel={() => send({ type: "cancel" })}
-          onAnswer={(id, approved) => send({ type: "answer", id, approved })}
-          onUndo={() => void undo().then(refresh)}
-          onReview={() => show({ kind: "changes" })}
-          onApply={(runId) => void applyFix(runId)}
-        />
-      </div>
+      </footer>
     </div>
   );
 }

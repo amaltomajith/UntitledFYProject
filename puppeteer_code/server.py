@@ -124,7 +124,7 @@ class RunManager:
             self.runs[run.id] = run
             for old in [r for r in self.runs.values() if r.done][:-KEEP_LOGS]:
                 del self.runs[old.id]
-        config = RunConfig(max_steps=req.max_steps, tdd=req.tdd)
+        config = RunConfig(max_steps=req.max_steps, tdd=req.tdd, explore=not session.private)
         threading.Thread(target=self._work, args=(run, session, policy, config), daemon=True).start()
         return run
 
@@ -466,4 +466,5 @@ def serve(host_port: int = 8765, mock_solution: Optional[str] = None, ide=None) 
     if mock_solution:
         factory = lambda provider: default_session(provider, mock_solution)   # noqa: E731
     uvicorn.run(create_app(session_factory=factory, port=host_port, ide=ide), host="127.0.0.1",
-                port=host_port, log_level="warning")
+                port=host_port, log_level="warning",
+                ws_per_message_deflate=False)

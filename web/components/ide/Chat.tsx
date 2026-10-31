@@ -1,22 +1,33 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowUp, CheckCircle, Stop, WarningCircle } from "@phosphor-icons/react";
-import { IDE } from "@/lib/content";
-import type { Item, View } from "@/lib/ide";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowUp, Stop } from "@phosphor-icons/react";
+import { IDE, type SlashCommand } from "@/lib/content";
+import type { Item, SavedChat, View } from "@/lib/ide";
+import { looksLikeCommand, SlashMenu, usePrompt } from "./Slash";
 
 type Mode = "build" | "fix";
 
 type Props = {
   view: View;
+  model: string;
   canUndo: boolean;
+  claim: string | null;
+  canApprove: boolean;
+  onApprove: () => void;
   onSend: (text: string, mode: Mode) => void;
+  onSlash: (line: string) => void;
+  onShell: (command: string) => void;
   onCancel: () => void;
   onAnswer: (id: string, approved: boolean) => void;
   onUndo: () => void;
   onReview: () => void;
   onApply: (runId: string) => void;
+  onResume: (id: string) => void;
 };
+
+const FRAMES = ["|", "/", "-", "\\"];
+const STARTERS = IDE.chat.starters.map((name) => IDE.commands.list.find((c) => c.name === name)!);
 
 /** Models write `code` and **bold** even when asked for plain text. Nothing else is interpreted. */
 function Rich({ text }: { text: string }) {
@@ -31,44 +42,131 @@ function Rich({ text }: { text: string }) {
   );
 }
 
-function Done({ item, last, ...props }: { item: Extract<Item, { kind: "done" }>; last: boolean } & Pick<Props, "canUndo" | "onUndo" | "onReview" | "onApply">) {
-  const text = IDE.chat.status[item.status] ?? item.status;
-  const failed = item.status !== "done";
-  if (item.question) return <p className="ide-done__meta">{IDE.tokens(item.tokens)}</p>;
+const prettyModel = (id: string) => id.split("/").pop() ?? id;
+
+function Line({ glyph, tone, children }: { glyph: string; tone?: string; children: ReactNode }) {
   return (
-    <div className="ide-done" data-failed={failed}>
-      <p className="ide-done__line">
-        {failed ? <WarningCircle size={15} aria-hidden="true" /> : <CheckCircle size={15} aria-hidden="true" />}
-        {text}
-        {item.reason && item.status !== "done" ? `: ${item.reason}` : ""}
-      </p>
-      {item.fixRun ? <p className="ide-done__meta">{IDE.chat.fixReady}</p> : null}
-      {!item.fixRun ? <p className="ide-done__meta">{IDE.chat.summary(item.files.length, item.tokens)}</p> : null}
-      {item.fixRun ? (
-        <div className="ide-done__actions">
-          <button type="button" className="btn btn--primary btn--sm" onClick={() => props.onApply(item.fixRun as string)}>
-            {IDE.chat.apply}
-          </button>
-        </div>
-      ) : null}
-      {last && item.files.length > 0 && props.canUndo ? (
-        <div className="ide-done__actions">
-          <button type="button" className="btn btn--ghost btn--sm" onClick={props.onReview}>
-            {IDE.chat.review}
-          </button>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={props.onUndo}>
-            {IDE.chat.undo}
-          </button>
-        </div>
-      ) : null}
+    <div className="ide-line">
+      <span className="ide-g" data-tone={tone} aria-hidden="true">
+        {glyph}
+      </span>
+      <div className="ide-line__body">{children}</div>
     </div>
   );
 }
 
-function Entry({ item, last, ...props }: { item: Item; last: boolean } & Omit<Props, "view" | "onSend" | "onCancel">) {
+function Done({ item, last, ...props }: { item: Extract<Item, { kind: "done" }>; last: boolean } & Pick<Props, "canUndo" | "onUndo" | "onReview" | "onApply" | "canApprove" | "onApprove">) {
+  const text = IDE.chat.status[item.status] ?? item.status;
+  const failed = item.status !== "done" && item.status !== "planned";
+  if (item.question) return <p className="ide-done__meta">{IDE.tokens(item.tokens)}</p>;
+  return (
+    <div className="ide-done">
+      <Line glyph={failed ? "✗" : "✓"} tone={failed ? "bad" : "good"}>
+        <p className="ide-done__line">
+          {text}
+          {item.reason && item.status !== "done" && !item.reason.startsWith(text) ? `: ${item.reason}` : ""}
+        </p>
+        {item.fixRun ? <p className="ide-done__meta">{IDE.chat.fixReady}</p> : null}
+        {item.status === "planned" && last && props.canApprove ? (
+          <>
+            <p className="ide-done__meta">{IDE.chat.approveHint}</p>
+            <div className="ide-done__actions">
+              <button type="button" className="btn btn--primary btn--sm" onClick={props.onApprove}>
+                {IDE.chat.approve}
+              </button>
+            </div>
+          </>
+        ) : null}
+        {!item.fixRun && item.status !== "planned" ? (
+          <p className="ide-done__meta">{IDE.chat.summary(item.files.length, item.tokens)}</p>
+        ) : null}
+        {item.fixRun ? (
+          <div className="ide-done__actions">
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => props.onApply(item.fixRun as string)}>
+              {IDE.chat.apply}
+            </button>
+          </div>
+        ) : null}
+        {last && item.files.length > 0 && props.canUndo ? (
+          <div className="ide-done__actions">
+            <button type="button" className="btn btn--ghost btn--sm" onClick={props.onReview}>
+              {IDE.chat.review}
+            </button>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={props.onUndo}>
+              {IDE.chat.undo}
+            </button>
+          </div>
+        ) : null}
+      </Line>
+    </div>
+  );
+}
+
+const when = (saved: number) =>
+  new Date(saved * 1000).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function Sessions({ rows, onResume }: { rows: SavedChat[]; onResume: (id: string) => void }) {
+  return (
+    <section className="ide-sessions" aria-label={IDE.commands.pickResume}>
+      <p>{IDE.commands.pickResume}</p>
+      <ol>
+        {rows.map((row) => (
+          <li key={row.id}>
+            <button type="button" onClick={() => onResume(row.id)}>
+              <span>{when(row.saved)}</span>
+              <span>{row.title}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function HelpRows({ title, rows }: { title: string; rows: [ReactNode, string][] }) {
+  return (
+    <>
+      <h3>{title}</h3>
+      <dl>
+        {rows.map(([name, hint], i) => (
+          <Fragment key={i}>
+            <dt>{name}</dt>
+            <dd>{hint}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </>
+  );
+}
+
+function Help() {
+  const { list, tips, helpHeads } = IDE.commands;
+  const row = (c: SlashCommand): [ReactNode, string] => [
+    <>
+      /{c.name}
+      {c.args ? <span> {c.args}</span> : null}
+    </>,
+    c.hint,
+  ];
+  return (
+    <section className="ide-help" aria-label={IDE.commands.label}>
+      <HelpRows title={helpHeads.actions} rows={list.filter((c) => !c.prompt).map(row)} />
+      <HelpRows title={helpHeads.prompts} rows={list.filter((c) => c.prompt).map(row)} />
+      <HelpRows title={helpHeads.tips} rows={tips.map(([key, text]) => [key, text])} />
+    </section>
+  );
+}
+
+type EntryProps = Omit<Props, "view" | "model" | "onSend" | "onSlash" | "onShell" | "onCancel">;
+
+function Entry({ item, last, running, ...props }: { item: Item; last: boolean; running: boolean } & EntryProps) {
   switch (item.kind) {
     case "user":
-      return <p className="ide-msg ide-msg--user">{item.text}</p>;
+      return (
+        <div className="ide-user">
+          <p>{item.text}</p>
+        </div>
+      );
     case "reply":
       return (
         <p className="ide-msg">
@@ -77,9 +175,9 @@ function Entry({ item, last, ...props }: { item: Item; last: boolean } & Omit<Pr
       );
     case "plan":
       return (
-        <section className="ide-plan" aria-label={IDE.chat.plan}>
-          <h3>{IDE.chat.plan}</h3>
-          <ol>
+        <section className="ide-plan-box" aria-label={IDE.chat.plan}>
+          <h3 className="ide-plan__title">{IDE.chat.plan}</h3>
+          <ol className="ide-plan">
             {item.steps.map((step) => (
               <li key={step}>{step}</li>
             ))}
@@ -89,7 +187,12 @@ function Entry({ item, last, ...props }: { item: Item; last: boolean } & Omit<Pr
     case "work":
       return (
         <details className="ide-work">
-          <summary>{item.label}</summary>
+          <summary>
+            <span className="ide-g" data-tone={running ? "live" : "dim"} aria-hidden="true">
+              ●
+            </span>
+            {item.label}
+          </summary>
           {item.details.length ? (
             <ul>
               {item.details.map((line, i) => (
@@ -103,22 +206,30 @@ function Entry({ item, last, ...props }: { item: Item; last: boolean } & Omit<Pr
       );
     case "check":
       return (
-        <p className="ide-check" data-ok={item.ok}>
-          {item.ok ? <CheckCircle size={15} aria-hidden="true" /> : <WarningCircle size={15} aria-hidden="true" />}
-          {item.summary}
-        </p>
+        <Line glyph={item.ok ? "✓" : "✗"} tone={item.ok ? "good" : "bad"}>
+          <p className="ide-check">{item.summary}</p>
+        </Line>
       );
     case "note":
       return (
-        <p className="ide-note" data-tone={item.tone}>
-          {item.text}
-        </p>
+        <Line glyph={item.tone === "info" ? "·" : "!"} tone={item.tone === "bad" ? "bad" : item.tone === "warn" ? "live" : "dim"}>
+          <p className="ide-note" data-tone={item.tone}>
+            {item.text}
+          </p>
+        </Line>
       );
+    case "output":
+      return <pre className="ide-output">{item.text}</pre>;
+    case "sessions":
+      return <Sessions rows={item.rows} onResume={props.onResume} />;
+    case "help":
+      return <Help />;
     case "approval":
       return (
         <section className="ide-approve" aria-label={IDE.chat.approveTitle}>
           <h3>{IDE.chat.approveTitle}</h3>
           <code>{item.command}</code>
+          {item.reason ? <p className="ide-approve__reason">{item.reason}</p> : null}
           {item.answer === null ? (
             <div className="ide-approve__actions">
               <button type="button" className="btn btn--primary btn--sm" onClick={() => props.onAnswer(item.id, true)}>
@@ -134,90 +245,186 @@ function Entry({ item, last, ...props }: { item: Item; last: boolean } & Omit<Pr
         </section>
       );
     case "done":
-      return <Done item={item} last={last} canUndo={props.canUndo} onUndo={props.onUndo} onReview={props.onReview} onApply={props.onApply} />;
+      return (
+        <Done
+          item={item}
+          last={last}
+          canUndo={props.canUndo}
+          onUndo={props.onUndo}
+          onReview={props.onReview}
+          onApply={props.onApply}
+          canApprove={props.canApprove}
+          onApprove={props.onApprove}
+        />
+      );
   }
 }
 
-export function Chat({ view, onSend, onCancel, ...props }: Props) {
+function Working({ label }: { label: string }) {
+  const start = useRef(Date.now());
+  const [tick, setTick] = useState(0);
+  const [still, setStill] = useState(false);
+
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setStill(reduced);
+    const timer = window.setInterval(() => setTick((n) => n + 1), reduced ? 1000 : 120);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const seconds = Math.floor((Date.now() - start.current) / 1000);
+  return (
+    <p className="ide-working">
+      <span className="ide-g" data-tone="live" aria-hidden="true">
+        {still ? "*" : FRAMES[tick % FRAMES.length]}
+      </span>
+      {label}
+      <span aria-hidden="true" className="ide-working__meta">
+        {" "}
+        ({seconds}s, {IDE.chat.stopHint})
+      </span>
+    </p>
+  );
+}
+
+function Welcome({ onPick }: { onPick: (name: string) => void }) {
+  return (
+    <div className="ide-welcome">
+      <h2>{IDE.chat.emptyTitle}</h2>
+      <p>{IDE.chat.emptyBody}</p>
+      <ul>
+        {STARTERS.map((command) => (
+          <li key={command.name}>
+            <button type="button" onClick={() => onPick(command.name)}>
+              <span>/{command.name}</span>
+              <span>{command.hint}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const typingSomewhere = () => {
+  const el = document.activeElement as HTMLElement | null;
+  return !!el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable);
+};
+
+// Esc belongs to whatever runs in a terminal, such as vim.
+const inTerminal = () => !!document.activeElement?.closest(".xterm");
+
+export function Chat({ view, model, onSend, onSlash, onShell, onCancel, ...props }: Props) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<Mode>("build");
   const end = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+
+  const box = usePrompt("ide-input", text, setText, (line) => {
+    if (looksLikeCommand(line)) onSlash(line);
+    else if (line.startsWith("!") && line.length > 1) onShell(line.slice(1).trim());
+    else if (view.busy) return false;
+    else onSend(line, mode);
+  });
 
   useEffect(() => {
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
     end.current?.scrollIntoView({ behavior: motion, block: "end" });
-  }, [view.items]);
+  }, [view.items, view.busy]);
 
-  const submit = (value: string) => {
-    if (!value.trim() || view.busy) return;
-    onSend(value.trim(), mode);
-    setText("");
-  };
+  useEffect(() => {
+    if (!input.current) return;
+    input.current.style.height = "auto";
+    if (text) input.current.style.height = `${input.current.scrollHeight}px`;
+  }, [text]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === "Escape" && view.busy && !inTerminal()) onCancel();
+      if (e.key === "/" && !typingSomewhere()) {
+        e.preventDefault();
+        input.current?.focus();
+        setText("/");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view.busy, onCancel]);
+
+  const label = [...view.items].reverse().find((item) => item.kind === "work");
 
   return (
     <aside className="ide-chat" aria-label={IDE.chat.label}>
+      <h2 className="ide-chat__title">{IDE.chat.title}</h2>
+      {props.claim ? <p className="ide-chat__claim">{props.claim}</p> : null}
       <div className="ide-chat__log" role="log" aria-live="polite">
         {view.items.length === 0 ? (
-          <div className="ide-chat__empty">
-            <h2>{IDE.chat.emptyTitle}</h2>
-            <p>{IDE.chat.emptyBody}</p>
-            <ul>
-              {IDE.chat.examples.map((example) => (
-                <li key={example}>
-                  <button type="button" onClick={() => setText(example)}>
-                    {example}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <Welcome
+            onPick={(name) => {
+              setText(`/${name} `);
+              input.current?.focus();
+            }}
+          />
         ) : (
-          view.items.map((item, i) => <Entry key={i} item={item} last={i === view.items.length - 1} {...props} />)
+          view.items.map((item, i) => (
+            <Entry
+              key={i}
+              item={item}
+              last={i === view.items.length - 1}
+              running={view.busy && i === view.items.length - 1}
+              {...props}
+            />
+          ))
         )}
-        {view.busy ? <p className="ide-chat__busy">{IDE.chat.working}</p> : null}
+        {view.busy ? <Working label={label?.kind === "work" ? label.label : IDE.chat.working} /> : null}
         <div ref={end} />
       </div>
       <form
         className="ide-chat__form"
         onSubmit={(e) => {
           e.preventDefault();
-          submit(text);
+          if (text.trim()) box.run(text.trim());
         }}
       >
-        <label htmlFor="ide-input" className="sr-only">
-          {IDE.chat.inputLabel}
-        </label>
-        <textarea
-          id="ide-input"
-          rows={3}
-          value={text}
-          placeholder={mode === "fix" ? IDE.chat.fixPlaceholder : IDE.chat.placeholder}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit(text);
-            }
-          }}
-        />
-        <div className="ide-chat__modes" role="group" aria-label={IDE.chat.modeLabel}>
-          {(["build", "fix"] as const).map((name) => (
-            <button key={name} type="button" aria-pressed={mode === name} title={IDE.chat.modeHints[name]} onClick={() => setMode(name)}>
-              {IDE.chat.modes[name]}
-            </button>
-          ))}
+        <SlashMenu id="ide-input" items={box.items} index={box.index} onPick={box.pick} />
+        <div className="ide-prompt">
+          <label htmlFor="ide-input" className="sr-only">
+            {IDE.chat.inputLabel}
+          </label>
+          <textarea
+            ref={input}
+            id="ide-input"
+            rows={1}
+            value={text}
+            spellCheck={false}
+            placeholder={mode === "fix" ? IDE.chat.fixPlaceholder : IDE.chat.placeholder}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={box.onKeyDown}
+            {...box.combo}
+          />
+          <div className="ide-prompt__foot">
+            <div className="ide-chat__modes" role="group" aria-label={IDE.chat.modeLabel}>
+              {(["build", "fix"] as const).map((name) => (
+                <button key={name} type="button" aria-pressed={mode === name} title={IDE.chat.modeHints[name]} onClick={() => setMode(name)}>
+                  {IDE.chat.modes[name]}
+                </button>
+              ))}
+            </div>
+            <span className="ide-prompt__model" title={`${IDE.chat.modelNow}: ${model}`}>
+              {prettyModel(model)}
+            </span>
+            {view.busy ? (
+              <button type="button" className="ide-prompt__send" aria-label={IDE.chat.stop} title={IDE.chat.stop} onClick={onCancel}>
+                <Stop size={14} weight="fill" aria-hidden="true" />
+              </button>
+            ) : (
+              <button type="submit" className="ide-prompt__send" aria-label={IDE.chat.send} title={IDE.chat.send} disabled={!text.trim()}>
+                <ArrowUp size={14} weight="bold" aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
-        {view.busy ? (
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onCancel}>
-            <Stop size={14} weight="fill" aria-hidden="true" />
-            {IDE.chat.stop}
-          </button>
-        ) : (
-          <button type="submit" className="btn btn--primary btn--sm" disabled={!text.trim()}>
-            {IDE.chat.send}
-            <ArrowUp size={14} weight="bold" aria-hidden="true" />
-          </button>
-        )}
       </form>
     </aside>
   );

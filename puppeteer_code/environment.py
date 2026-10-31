@@ -106,11 +106,11 @@ class CodeEnvironment(Environment):
     """Environment whose state is a git sandbox + CodeState."""
 
     def __init__(self, config: EnvironmentConfig, repo: str | Path, test_timeout: int = 120,
-                 tdd: bool = False):
+                 tdd: bool = False, runner=None):
         super().__init__(config)
         self.repo = Path(repo)
         self.test_timeout = test_timeout
-        self.ws = Workspace.create(repo)
+        self.ws = Workspace.create(repo, runner=runner)
         self.index = SymbolIndex(self.ws).build()
         baseline = self._baseline_tests(test_timeout)
         targets = set(baseline.failing)

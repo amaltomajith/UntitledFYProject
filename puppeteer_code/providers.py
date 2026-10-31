@@ -35,6 +35,7 @@ except ImportError:
     pass
 
 from core.agent import NebiusClient, GroqClient, OpenAICompatClient
+from puppeteer_code.privacy import PrivacyError
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +115,15 @@ class CachingClient:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.hits = 0
 
-    def _key(self, model, messages, temperature, max_tokens, tools=None) -> Path:
-        request = [model, messages, temperature, max_tokens] + ([tools] if tools else [])
+    def _key(self, model, messages, temperature, max_tokens, tools=None, options=None) -> Path:
+        request = [model, messages, temperature, max_tokens] + ([tools] if tools else []) + ([options] if options else [])
         blob = json.dumps(request, sort_keys=True)
         return self.cache_dir / (hashlib.sha256(blob.encode("utf-8")).hexdigest() + ".json")
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7,
              max_tokens: int = 2048, tools: Optional[list[dict]] = None,
-             on_delta: Optional[Callable[[str], None]] = None) -> dict:
-        path = self._key(model, messages, temperature, max_tokens, tools)
+             on_delta: Optional[Callable[[str], None]] = None, **options) -> dict:
+        path = self._key(model, messages, temperature, max_tokens, tools, options)
         if path.exists():
             self.hits += 1
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -132,7 +133,7 @@ class CachingClient:
             return data
         extra = {k: v for k, v in (("tools", tools), ("on_delta", on_delta)) if v is not None}
         data = self.inner.chat(model=model, messages=messages,
-                               temperature=temperature, max_tokens=max_tokens, **extra)
+                               temperature=temperature, max_tokens=max_tokens, **extra, **options)
         path.write_text(json.dumps(data), encoding="utf-8")
         return data
 
@@ -233,7 +234,7 @@ class ProviderSession:
 
     Parameters
     ----------
-    provider   : "nebius" | "groq" | "mock" (default from models.yaml)
+    provider   : "nebius" | "groq" | "local" | "mock" (default from models.yaml)
     responder  : MockClient responder (only for provider="mock")
     cache_dir  : enable the on-disk response cache
     config     : pre-loaded models.yaml dict (tests)
@@ -251,6 +252,10 @@ class ProviderSession:
         self.provider = provider or self.config.get("default_provider", "nebius")
         spec = self.config["providers"][self.provider]
         self.spec = spec
+        self.private = bool(spec.get("private"))
+        self.notices: list[str] = []
+        if cache_dir and self.private:
+            raise PrivacyError("Private mode keeps no response cache, so prompts are not written to disk there.")
 
         raw = self._make_raw_client(spec, responder)
         if cache_dir and self.provider != "mock":
@@ -266,6 +271,11 @@ class ProviderSession:
     def _make_raw_client(self, spec: dict, responder: Optional[Responder]):
         if self.provider == "mock":
             return MockClient(responder)
+        if self.private:
+            from puppeteer_code.ollama import OllamaClient, shared_server
+            server = shared_server(spec)
+            self.notices += server.warnings()
+            return OllamaClient(server.url, spec.get("num_ctx", 16384), spec.get("keep_alive", "10m"))
         if self.provider == "nebius":
             return NebiusClient(base_url=spec.get("base_url"), api_key_env=spec.get("api_key_env"))
         if self.provider == "groq":
@@ -274,6 +284,8 @@ class ProviderSession:
 
     def _resolve_tiers(self, spec: dict, client) -> dict[str, str]:
         """Pick the first served candidate per tier."""
+        if self.private and client is not None:
+            return self._local_tiers(spec, client)
         available: Optional[set[str]] = None
         if client is not None and self.provider != "mock":
             try:
@@ -294,6 +306,14 @@ class ProviderSession:
             resolved[tier] = choice
         return resolved
 
+    @staticmethod
+    def _local_tiers(spec: dict, client) -> dict[str, str]:
+        installed = client.list_models()
+        choice = next((m for m in spec["tiers"]["quality"] if m in installed), None) or next(iter(installed), None)
+        if choice is None:
+            raise PrivacyError(f"No local model is installed. Run: ollama pull {spec['tiers']['quality'][0]}")
+        return {"fast": choice, "quality": choice}
+
     # ── per-agent helpers ────────────────────────────────────────────────────
 
     def settings_for(self, agent_name: str) -> AgentSettings:
@@ -304,6 +324,11 @@ class ProviderSession:
         if tier == "none":
             return "none"
         return self.tiers.get(tier) or next(iter(self.tiers.values()))
+
+    def thinking_values(self, model: str) -> Optional[list]:
+        """The thinking levels a model accepts, or None when it has no native thinking to control."""
+        probe = getattr(self.client.inner, "think_values", None)
+        return probe(model) if probe else None
 
     def candidate_report(self) -> list[dict]:
         """For `pcode models`: which configured candidates are served."""

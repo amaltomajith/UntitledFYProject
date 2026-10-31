@@ -26,10 +26,22 @@ function KeyStep({ token, state, onDone }: { token: string; state: IdeState; onD
     }
   };
 
+  const useLocal = async () => {
+    setError(null);
+    try {
+      onDone(await post<IdeState>(token, "private", { on: true }));
+    } catch (err) {
+      setError(message(err));
+    }
+  };
+
   return (
     <form className="ide-setup__card panel" onSubmit={save}>
       <h1>{IDE.setup.keyTitle}</h1>
       <p className="muted">{IDE.setup.keyBody}</p>
+      <button type="button" className="btn btn--ghost" title={IDE.private.useLocalHint} onClick={() => void useLocal()}>
+        {IDE.private.useLocal}
+      </button>
       <div className="field">
         <label htmlFor="ide-provider">{IDE.setup.provider}</label>
         <select id="ide-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
@@ -156,7 +168,7 @@ function FolderStep({ token, onDone }: { token: string; onDone: (s: IdeState) =>
 type Props = { token: string; state: IdeState; onChange: (s: IdeState) => void; onClose?: () => void };
 
 export function Setup({ token, state, onChange, onClose }: Props) {
-  const hasKey = Object.values(state.keys).some(Boolean);
+  const hasKey = Object.values(state.keys).some(Boolean) || state.private.on;
   return (
     <main className="ide-setup">
       {hasKey ? <FolderStep token={token} onDone={onChange} /> : <KeyStep token={token} state={state} onDone={onChange} />}

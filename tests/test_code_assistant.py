@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import shutil
+import subprocess
 import sys
 from io import StringIO
 from pathlib import Path
@@ -623,7 +624,7 @@ def test_terminal_commands(tmp_path):
     text = out.getvalue()
     assert session.tools.mode == "auto"
     assert session.provider.tiers["fast"] == "other-model"
-    for expected in ("Mode: auto", "No plan yet", "mode must be ask or auto", "Nothing to undo",
+    for expected in ("Mode: auto", "No plan yet", "mode must be plan, ask or auto", "Nothing to undo",
                      "Unknown command /nonsense", "No earlier conversations", "No such conversation"):
         assert expected in text
 
@@ -1305,6 +1306,45 @@ def test_terminal_panel_streams_output(tmp_path):
     assert "hello-panel" in "".join(e.get("text", "") for e in events)
 
 
+def test_clear_starts_a_new_conversation_and_keeps_the_old_one(tmp_path):
+    client, hub, _ = opened(tmp_path, responder=script("Hello."))
+    hub.session.policy = make_policy("direct")
+    with client.websocket_connect("/api/ide/ws", headers=LOCAL) as ws:
+        ws.send_text(json.dumps({"token": TOKEN}))
+        ws.send_text(json.dumps({"type": "send", "message": "what is here?"}))
+        until(ws, "done")
+        first = hub.session.id
+        assert client.post("/api/ide/clear", headers=AUTH).json()["session_id"] != first
+        until(ws, "cleared")
+    assert hub.session.history == []
+    rows = client.get("/api/ide/sessions", headers=AUTH).json()["sessions"]
+    assert [row["id"] for row in rows] == [first]
+
+
+def test_resume_tells_every_tab_what_was_said(tmp_path):
+    client, hub, _ = opened(tmp_path, responder=script("Hello."))
+    hub.session.policy = make_policy("direct")
+    with client.websocket_connect("/api/ide/ws", headers=LOCAL) as ws:
+        ws.send_text(json.dumps({"token": TOKEN}))
+        ws.send_text(json.dumps({"type": "send", "message": "what is here?"}))
+        until(ws, "done")
+        first = hub.session.id
+        client.post("/api/ide/clear", headers=AUTH)
+        assert client.post("/api/ide/resume", json={"id": first}, headers=AUTH).status_code == 200
+        resumed = until(ws, "resumed")[-1]
+    assert hub.session.id == first
+    assert [m["content"] for m in resumed["history"]] == ["what is here?", "Hello."]
+
+
+def test_model_can_be_changed_from_the_ide(tmp_path):
+    client, hub, _ = opened(tmp_path)
+    reply = client.post("/api/ide/model", json={"tier": "fast", "model": "vendor/other-1.5"}, headers=AUTH)
+    assert reply.json()["models"]["fast"] == "vendor/other-1.5"
+    assert client.post("/api/ide/model", json={"tier": "huge", "model": "x"}, headers=AUTH).status_code == 422
+    assert client.post("/api/ide/model", json={"tier": "fast", "model": "a b"}, headers=AUTH).status_code == 422
+    assert client.post("/api/ide/model", json={"tier": "fast", "model": "x"}, headers=LOCAL).status_code == 401
+
+
 def test_console_routes_still_work_without_the_ide(tmp_path):
     client = TestClient(create_app(runs_dir=tmp_path, static_dir=tmp_path), base_url="http://127.0.0.1:8765")
     assert client.get("/api/health").status_code == 200
@@ -1444,3 +1484,76 @@ def test_a_builder_that_only_ran_a_command_did_its_job(tmp_path):
     events = list(session.send("please run the git version command"))     # small, so no Planner turn
     session.close()
     assert events[-1]["status"] == "done"
+
+
+# ── IDE search and source control ────────────────────────────────────────────
+
+def test_ide_search_finds_text_any_case_and_treats_it_literally(tmp_path):
+    client, _, _ = opened(tmp_path, files={"src/a.py": "x = 1\nTotal = (2)\n", "b.txt": "nothing\n"})
+    hits = client.get("/api/ide/search", params={"q": "total = (2"}, headers=AUTH).json()
+    assert hits == {"hits": [{"path": "src/a.py", "line": 2, "text": "Total = (2)"}], "truncated": False}
+
+
+def test_ide_search_skips_protected_files(tmp_path):
+    client, _, _ = opened(tmp_path, files={".env": "NEEDLE=1\n", "a.py": "needle = 1\n"})
+    hits = client.get("/api/ide/search", params={"q": "needle"}, headers=AUTH).json()["hits"]
+    assert [h["path"] for h in hits] == ["a.py"]
+
+
+def test_ide_search_needs_a_token_and_a_query(tmp_path):
+    client, _, _ = opened(tmp_path)
+    assert client.get("/api/ide/search", params={"q": "x"}, headers=LOCAL).status_code == 401
+    assert client.get("/api/ide/search", params={"q": ""}, headers=AUTH).status_code == 422
+
+
+def git_repo(project):
+    def git(*args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=project, check=True,
+                       stdin=subprocess.DEVNULL, capture_output=True)
+    git("init", "-b", "work")
+    git("add", ".")
+    git("commit", "-m", "start")
+    return git
+
+
+def test_ide_git_lists_changes_without_touching_the_repo(tmp_path):
+    client, _, project = opened(tmp_path, files={"a.py": "1\n", "gone.py": "2\n", "old name.py": "3\n"})
+    git = git_repo(project)
+    (project / "a.py").write_text("changed\n")
+    (project / "gone.py").unlink()
+    (project / "new.py").write_text("4\n")
+    (project / ".env").write_text("KEY=1\n")
+    git("mv", "old name.py", "new name.py")
+    index = (project / ".git" / "index").read_bytes()
+    report = client.get("/api/ide/git", headers=AUTH).json()
+    assert (project / ".git" / "index").read_bytes() == index
+    assert report["repo"] is True and report["branch"] == "work"
+    assert {f["path"]: f["status"] for f in report["files"]} == {
+        "a.py": "M", "gone.py": "D", "new name.py": "R", "new.py": "U"}
+
+
+def test_ide_git_in_a_subfolder_shows_paths_from_that_folder(tmp_path):
+    client, _, project = opened(tmp_path, files={"a.py": "1\n"})
+    outer = tmp_path / "outer"
+    (outer / "inner").mkdir(parents=True)
+    (outer / "inner" / "b.py").write_text("1\n")
+    (outer / "c.py").write_text("1\n")
+    git_repo(outer)
+    (outer / "inner" / "b.py").write_text("2\n")
+    (outer / "c.py").write_text("2\n")
+    assert client.post("/api/ide/open", json={"path": str(outer / "inner")}, headers=AUTH).status_code == 200
+    assert client.get("/api/ide/git", headers=AUTH).json()["files"] == [{"path": "b.py", "status": "M"}]
+
+
+def test_ide_git_outside_a_repo_is_an_empty_state(tmp_path):
+    client, _, _ = opened(tmp_path)
+    assert client.get("/api/ide/git", headers=AUTH).json() == {"repo": False, "branch": "", "files": []}
+
+
+def test_ide_git_never_runs_a_command_from_the_repos_config(tmp_path):
+    client, _, project = opened(tmp_path, files={"a.py": "1\n"})
+    git = git_repo(project)
+    git("config", "core.fsmonitor", f"{PY} -c \"open('ran.txt','w')\"")
+    (project / "a.py").write_text("2\n")
+    client.get("/api/ide/git", headers=AUTH)
+    assert not (project / "ran.txt").exists()

@@ -51,7 +51,7 @@ you wrote. {RULES}""", tuple(READ_ONLY + ["write_file", "edit_file"]), 8, "tests
 user's project folder. Do the work with your tools instead of describing it. Read a file before \
 editing it. Follow the plan and match the code already there. Finish the whole request. If the \
 result is a web app or page, start it with start_server so the user can see it; for plain HTML \
-use: python -m http.server 8000. When done, reply with a short note of what you did. {RULES}""",
+use: python -m http.server 8000 --bind 127.0.0.1. When done, reply with a short note of what you did. {RULES}""",
                          tuple(ALL_TOOLS), 20, "code"),
 
     "Debugger": AgentSpec("Debugger", "Fixing", f"""Something does not work yet. Find the cause \
@@ -70,6 +70,9 @@ only the facts given. Never claim something works unless the facts say a check p
 
 BUILDER_ONLY = dataclasses.replace(SPECS["Builder"], prompt=SPECS["Builder"].prompt + \
                                    " Run the code or its tests to check your work.", scope="any", max_turns=25)
+PLANNER_READ = dataclasses.replace(SPECS["Planner"], prompt=SPECS["Planner"].prompt + \
+                                   " Read the files you need with your tools first.",
+                                   tools=tuple(READ_ONLY), max_turns=6)
 
 INSTRUCTIONS = {
     "TestWriter": "Write the tests for this request now.",
@@ -79,4 +82,5 @@ INSTRUCTIONS = {
 UPDATE_TESTS = ("The checks still fail. The request may change behaviour that existing tests assert. Update "
                 "only tests that assert the old behaviour. Do not weaken, skip or delete any other test.")
 
-__all__ = ["AgentSpec", "SPECS", "BUILDER_ONLY", "INSTRUCTIONS", "UPDATE_TESTS", "RULES", "EDIT_TOOLS"]
+__all__ = ["AgentSpec", "SPECS", "BUILDER_ONLY", "PLANNER_READ", "INSTRUCTIONS", "UPDATE_TESTS", "RULES",
+           "EDIT_TOOLS"]

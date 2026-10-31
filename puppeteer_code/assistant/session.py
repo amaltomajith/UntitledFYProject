@@ -9,7 +9,7 @@ end sees `approval_request` and calls `answer()`.
 
 Events: text_delta, notice, plan, agent, tool_start, tool_end, file_changed,
 command_output, preview, approval_request, verify, checkpoint, rollback, usage,
-done, error.
+effort, done, error.
 """
 
 from __future__ import annotations
@@ -24,8 +24,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Iterator, Optional, Union
 
-from puppeteer_code.assistant.agents import BUILDER_ONLY, INSTRUCTIONS, SPECS, UPDATE_TESTS, AgentSpec
+from puppeteer_code.assistant.agents import BUILDER_ONLY, INSTRUCTIONS, PLANNER_READ, SPECS, UPDATE_TESTS, AgentSpec
 from puppeteer_code.assistant.context import conversation, file_map, task_for, trim
+from puppeteer_code.assistant.effort import (LEVELS, MAX_NOTES, MAX_REASONING_TOKENS, REASONING_PROMPT, describe,
+                                             reasons, think_option, tier_for)
 from puppeteer_code.assistant.policy import DirectPolicy, make_policy, reward
 from puppeteer_code.assistant.shield import RequestState, allowed
 from puppeteer_code.assistant.snapshots import Snapshots, pcode_home
@@ -33,7 +35,9 @@ from puppeteer_code.assistant.toolbox import Toolbox, is_test_file
 from puppeteer_code.assistant.verify import Check, detect, improved, regressed, run_checks, testable
 from puppeteer_code.bench import is_quota_error
 from puppeteer_code.integrity import scan_diff
+from puppeteer_code.ollama import Cancelled
 from puppeteer_code.policy import Policy
+from puppeteer_code.sandbox import private_runner
 from puppeteer_code.workspace import scrub_obj
 
 MAX_STEPS = 12
@@ -42,15 +46,32 @@ REPEAT_LIMIT = 3
 DIFF_CHARS = 6000
 SMALL_WORDS = 12
 MAX_PLAN_STEPS = 6
+MODES = ("plan", "ask", "auto")
 TOOL_FAILED = ("That tool call was malformed and did not run, so nothing changed. Call one of the offered "
                "tools by its exact name, with valid JSON arguments.")
 NOTHING_DONE = "I did not manage to change anything, so nothing was built."
 GAVE_UP = "I could not do this without breaking what worked, so I put the code back as it was."
+NO_PLAN = "I could not write a plan for this. Try saying more about what you want."
+DEEP_SPEND = "Deep effort makes extra model calls, so this request will use more tokens."
+PRIVATE_NOTE = ("This runs only on the user's computer. You cannot start servers or previews: give the user the "
+                "command to run instead.")
+NO_NETWORK = ("Commands you run have no network, so nothing can be downloaded. If a package is missing, ask the "
+              "user to install it.")
+BLOCK_LOST = ("The check that commands have no network did not pass just now, so they may not be blocked. "
+              "Auto is off, and I will ask before commands.")
+PRIVATE_ONLY = "That conversation is private. Open it in Private mode."
 
 _ACTION = re.compile(r"\b(add|build|change|create|delete|fix|implement|make|move|refactor|remove|"
                      r"rename|replace|update|write|generate|install|set up|setup|convert|run)\b", re.I)
 _QUESTION = re.compile(r"^(what|why|how|where|when|who|which|does|do|is|are|can|could|should|"
                        r"explain|describe|show me|tell me)\b", re.I)
+
+
+def parse_plan(text: str) -> tuple[str, list[str]]:
+    """The stack and the checklist from a Planner reply."""
+    stack = re.search(r"STACK:\s*(\w+)", text, re.I)
+    steps = [m.strip() for m in re.findall(r"^\s*\d+[.)]\s*(.+)$", text, re.M)][:MAX_PLAN_STEPS]
+    return (stack.group(1).lower() if stack else ""), steps
 
 
 def is_question(message: str) -> bool:
@@ -72,29 +93,41 @@ class Stop(Exception):
 
 class AssistantSession:
     def __init__(self, project: str | Path, provider, mode: str = "ask", home: Optional[Path] = None,
-                 max_steps: int = MAX_STEPS, token_budget: int = TOKEN_BUDGET, session_id: Optional[str] = None,
+                 max_steps: int = MAX_STEPS, token_budget: Optional[int] = None, session_id: Optional[str] = None,
                  policy: Union[str, Policy] = "heuristic", max_turns: Optional[int] = None,
-                 fallback: bool = True):
+                 fallback: bool = True, effort: str = "normal"):
         self.project = Path(project).resolve()
         self.project.mkdir(parents=True, exist_ok=True)
         self.provider = provider
         self.home = Path(home or pcode_home())
         self.max_steps = max_steps
         self.max_turns = max_turns      # overrides each agent's own limit
-        self.token_budget = token_budget
-        self.fallback = fallback        # benchmarks turn this off so a row used the models it names
+        self.private = provider.private
+        self.token_budget = token_budget or provider.spec.get("token_budget", TOKEN_BUDGET)
+        self.max_seconds = provider.spec.get("max_seconds")
+        self.fallback = fallback and not self.private   # benchmarks turn this off so a row used the models it names
         self.policy = make_policy(policy) if isinstance(policy, str) else policy
-        self.id = session_id or time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+        self.id = session_id or self._new_id()
         self.history: list[dict] = []
         self.undo_stack: list[dict] = []
+        self.pending_plan: Optional[dict] = None
+        self.set_effort(effort)
+        self._level = effort            # the effort of the request in progress
+        self._return_mode = "ask"       # where leaving plan mode goes
         self.snapshots = Snapshots(self.project, self.home)
-        self.tools = Toolbox(self.project, self._emit, self._approve, mode)
+        self.tools = Toolbox(self.project, self._emit, self._approve, mode,
+                             runner=private_runner(self.project, self.home) if self.private else None)
+        self.withheld = ("start_server",) if self.private else ()
         self._events: "queue.Queue[Optional[dict]]" = queue.Queue()
         self._lock = threading.Lock()
         self._busy = False
         self._cancel = threading.Event()
+        if self.private:
+            provider.client.inner.cancel = self._cancel     # Stop reaches a reply in progress
+            self.tools.mode = self._safe_mode(mode)
         self._pending: dict[str, dict] = {}
         self._request_start = 0
+        self._started = 0.0
 
     # ── front-end API ────────────────────────────────────────────────────────
 
@@ -102,14 +135,16 @@ class AssistantSession:
     def busy(self) -> bool:
         return self._busy
 
-    def send(self, message: str) -> Iterator[dict]:
+    def send(self, message: str, plan: Optional[dict] = None, effort: Optional[str] = None) -> Iterator[dict]:
+        """`plan` carries an approved plan. `effort` applies to this one request."""
         with self._lock:
             if self._busy:
                 raise RuntimeError("the assistant is already working on a request")
             self._busy = True
         self._cancel.clear()
         self._events = queue.Queue()
-        worker = threading.Thread(target=self._work, args=(message,), daemon=True)
+        self._level = effort or self.effort
+        worker = threading.Thread(target=self._work, args=(message, plan), daemon=True)
         worker.start()
         try:
             while True:
@@ -139,9 +174,29 @@ class AssistantSession:
         self._cancel.set()
 
     def set_mode(self, mode: str) -> None:
-        if mode not in ("ask", "auto"):
-            raise ValueError("mode must be ask or auto")
-        self.tools.mode = mode
+        if mode not in MODES:
+            raise ValueError("mode must be plan, ask or auto")
+        if self._busy and "plan" in (mode, self.tools.mode):
+            raise RuntimeError("wait for the current request to finish")
+        if mode == "plan" and self.tools.mode != "plan":
+            self._return_mode = self.tools.mode
+        self.tools.mode = self._safe_mode(mode)
+
+    def _safe_mode(self, mode: str) -> str:
+        return "ask" if mode == "auto" and self.private and not self.tools.runner.contained else mode
+
+    def set_effort(self, level: str) -> None:
+        if level not in LEVELS:
+            raise ValueError("effort must be fast, normal, think or deep")
+        self.effort = level
+
+    def approve_plan(self) -> Iterator[dict]:
+        """Run the waiting plan. Only the front ends call this: no tool or agent can reach it."""
+        plan = self.pending_plan
+        if plan is None:
+            raise ValueError("no plan is waiting for approval")
+        self.set_mode(plan["return_mode"])
+        return self.send(plan["request"], plan=plan)
 
     def undo(self) -> dict:
         """Undo the latest request. A file the user changed afterwards is kept and reported."""
@@ -155,11 +210,19 @@ class AssistantSession:
         self.save()
         return {"restored": restored, "kept": kept}
 
+    def clear(self) -> None:
+        """Start a new conversation. The old one stays resumable, and Undo still works."""
+        self.id, self.history, self.pending_plan = self._new_id(), [], None
+
     def close(self) -> None:
         self.cancel()
         self.tools.close()
 
     # ── saving ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _new_id() -> str:
+        return time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
 
     def _path(self) -> Path:
         return self.home / "sessions" / f"{self.id}.json"
@@ -168,21 +231,31 @@ class AssistantSession:
         self._path().parent.mkdir(parents=True, exist_ok=True)
         data = {"id": self.id, "project": str(self.project), "saved": time.time(),
                 "history": self.history, "undo": self.undo_stack}
+        if self.pending_plan:
+            data["pending_plan"] = self.pending_plan
+        if self.private:
+            data["private"] = True
         self._path().write_text(json.dumps(scrub_obj(data), indent=1), encoding="utf-8")
 
     @classmethod
     def resume(cls, session_id: str, provider, home: Optional[Path] = None, **options) -> "AssistantSession":
         path = Path(home or pcode_home()) / "sessions" / f"{session_id}.json"
         data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("private") and not provider.private:
+            raise ValueError(PRIVATE_ONLY)
         session = cls(data["project"], provider, home=home, session_id=session_id, **options)
         session.history = data["history"]
         session.undo_stack = data["undo"]
+        session.pending_plan = data.get("pending_plan")
         return session
 
     def adopt(self, session_id: str) -> None:
         """Continue an earlier conversation on this same project."""
         data = json.loads((self.home / "sessions" / f"{session_id}.json").read_text(encoding="utf-8"))
+        if data.get("private") and not self.private:
+            raise ValueError(PRIVATE_ONLY)
         self.id, self.history, self.undo_stack = session_id, data["history"], data["undo"]
+        self.pending_plan = data.get("pending_plan")
 
     @staticmethod
     def list_sessions(project: str | Path, home: Optional[Path] = None) -> list[dict]:
@@ -218,9 +291,9 @@ class AssistantSession:
     def _spent(self) -> int:
         return self.provider.meter.total_tokens - self._request_start
 
-    def _work(self, message: str) -> None:
+    def _work(self, message: str, plan: Optional[dict]) -> None:
         try:
-            self._request(message)
+            self._request(message, plan)
         except Exception as e:  # never leave a front end waiting on a dead worker
             self._emit({"type": "error", "message": str(e)[:300]})
             self._emit({"type": "done", "status": "error", "reason": str(e)[:300], "files": [],
@@ -229,22 +302,37 @@ class AssistantSession:
             self._busy = False
             self._events.put(None)
 
-    def _request(self, message: str) -> None:
+    def _request(self, message: str, plan: Optional[dict] = None) -> None:
         self._request_start = self.provider.meter.total_tokens
+        self._started = time.monotonic()
+        while self.provider.notices:
+            self._emit({"type": "notice", "text": self.provider.notices.pop(0)})
         before, st = None, None
         status, reason, reply = "done", "", ""
         self.tools.touched.clear()
         self.tools.scope = "any"
+        question = plan is None and is_question(message)
+        if not question:
+            self.pending_plan = None            # a new request replaces a waiting plan
         try:
-            if is_question(message):
+            self._check_block()
+            self._announce_effort()
+            if plan:
+                self._warn_if_changed(plan)
+            if question:
                 reply = self._loop(SPECS["Answerer"], message)
+            elif plan is None and self.tools.mode == "plan":
+                status, reason, reply = self._draft_plan(message)
             elif isinstance(self.policy, DirectPolicy):
                 before = self.snapshots.snapshot("before: " + message[:60])
-                reply = self._loop(BUILDER_ONLY, message)
+                steps = "\n".join(plan["steps"]) if plan else ""
+                reply = self._loop(BUILDER_ONLY, f"{message}\n\nFollow this plan:\n{steps}" if plan else message)
             else:
                 before = self.snapshots.snapshot("before: " + message[:60])
                 st = RequestState(request=message, max_steps=self.max_steps, token_budget=self.token_budget,
-                                  start_sha=before, best_sha=before)
+                                  start_sha=before, best_sha=before, no_review=self._level == "fast")
+                if plan:
+                    st.planned, st.plan, st.stack = True, plan["steps"], plan["stack"]
                 reply = self._puppeteer(st)
                 if st.failing:
                     status, reason = "failed", st.check.summary
@@ -285,8 +373,9 @@ class AssistantSession:
         """One agent per step: the shield filters, the policy picks, the checks decide what stands."""
         empty = file_map(self.tools) == "(the folder is empty)"
         st.new_project = empty
-        st.small = not empty and len(st.request.split()) <= SMALL_WORDS
-        st.testable = testable(self.project)
+        st.small = (not empty and len(st.request.split()) <= SMALL_WORDS and not st.planned
+                    and self._level != "deep")
+        st.testable = testable(self.project, st.stack)
         if detect(self.project):
             st.baseline = st.best = st.check = self._verify()
         self.policy.begin_episode()
@@ -307,6 +396,8 @@ class AssistantSession:
             raise Stop("cancelled", "Stopped by you.")
         if self._spent() >= self.token_budget:
             raise Stop("stopped", f"Stopped at the limit of {self.token_budget} tokens for one request.")
+        if self.max_seconds and time.monotonic() - self._started >= self.max_seconds:
+            raise Stop("stopped", f"Stopped at the limit of {self.max_seconds // 60} minutes for one request.")
 
     def _step(self, action: str, st: RequestState) -> None:
         if action == "Planner":
@@ -318,13 +409,43 @@ class AssistantSession:
 
     def _plan(self, st: RequestState) -> None:
         text = self._once(SPECS["Planner"], f"Request: {st.request}\n\nFiles:\n{file_map(self.tools)}")
-        stack = re.search(r"STACK:\s*(\w+)", text, re.I)
-        st.stack = stack.group(1).lower() if stack else ""
-        st.plan = [m.strip() for m in re.findall(r"^\s*\d+[.)]\s*(.+)$", text, re.M)][:MAX_PLAN_STEPS]
+        st.stack, st.plan = parse_plan(text)
         if st.stack:
             st.testable = testable(self.project, st.stack)
         if st.plan:
             self._emit({"type": "plan", "steps": st.plan})
+
+    def _draft_plan(self, message: str) -> tuple[str, str, str]:
+        """Plan mode: read the project and propose a plan. Nothing runs until the user approves it."""
+        sha = self.snapshots.snapshot("plan: " + message[:60])
+        text = self._loop(PLANNER_READ, f"Request: {message}\n\nFiles:\n{file_map(self.tools)}", quiet=True)
+        stack, steps = parse_plan(text)
+        if not steps:
+            return "failed", NO_PLAN, NO_PLAN
+        self.pending_plan = {"request": message, "steps": steps, "stack": stack, "sha": sha,
+                             "return_mode": self._return_mode}
+        self._emit({"type": "plan", "steps": steps, "pending": True})
+        return "planned", "", "\n".join(f"{i}. {step}" for i, step in enumerate(steps, 1))
+
+    def _warn_if_changed(self, plan: dict) -> None:
+        changed = self.snapshots.changed_since(plan["sha"])
+        if changed:
+            self._emit({"type": "notice", "text": f"Files changed since this plan was written: {', '.join(changed[:5])}."})
+
+    def _check_block(self) -> None:
+        """Before every request, inside the container. A failure is always said out loud."""
+        runner = self.tools.runner
+        if runner.name != "direct" and runner.contained and not runner.verify():
+            self.tools.mode = self._safe_mode(self.tools.mode)
+            self._emit({"type": "notice", "text": BLOCK_LOST})
+
+    def _announce_effort(self) -> None:
+        if self._level == "normal":
+            return
+        values = self.provider.thinking_values(self._model(SPECS["Builder"]))
+        self._emit({"type": "effort", "level": self._level, "how": describe(self._level, values)})
+        if self._level == "deep" and self.provider.provider != "local":
+            self._emit({"type": "notice", "text": DEEP_SPEND})
 
     def _edit_step(self, action: str, st: RequestState) -> None:
         spec = SPECS[action]
@@ -394,6 +515,8 @@ class AssistantSession:
     def _respond(self, st: RequestState) -> str:
         """The Responder sees facts from the checks. The note on what was verified is added by code."""
         self._limits()
+        if self.private:
+            return self._report(st)
         check = st.check
         facts = [f"Request: {st.request}", f"Check result: {check.summary if check else 'nothing was checked'}"]
         if st.notes:
@@ -407,6 +530,20 @@ class AssistantSession:
         if note:
             self._emit({"type": "text_delta", "text": f"\n\n{note}"})
             text = f"{text}\n\n{note}"
+        return text
+
+    def _report(self, st: RequestState) -> str:
+        """Private's reply, written by code. A real local model denied finished work with the file list in its prompt."""
+        changed = self.snapshots.changed_since(st.start_sha)
+        lines = [f"Changed: {', '.join(changed[:20])}." if changed else "No files were changed."]
+        if st.rollbacks:
+            lines.append(f"{st.rollbacks} change(s) were undone because they made things worse.")
+        if st.review not in ("", "OK") and st.review_handled is False:
+            lines.append(f"Unresolved review concerns: {st.review[:400]}")
+        note = self._honesty_note(st)
+        lines.append(note or st.check.summary)
+        text = "\n\n".join(lines)
+        self._emit({"type": "text_delta", "text": text})
         return text
 
     @staticmethod
@@ -439,23 +576,42 @@ class AssistantSession:
     def _context(self) -> list[dict]:
         return conversation(self.history)
 
+    def _system(self, spec: AgentSpec) -> str:
+        if not self.private:
+            return spec.prompt
+        return " ".join([spec.prompt, PRIVATE_NOTE, *([NO_NETWORK] if self.tools.runner.contained else [])])
+
+    def _model(self, spec: AgentSpec) -> str:
+        return self.provider.model_for(spec.name, tier_for(self._level, spec.name))
+
+    def _reasoned(self, spec: AgentSpec, task: str) -> str:
+        """A reasoning pass, when this effort calls for one. Its notes are never saved to history."""
+        if not reasons(self._level, spec.name, self.provider.thinking_values(self._model(spec))):
+            return task
+        reply = self._chat(spec, trim([{"role": "system", "content": REASONING_PROMPT},
+                                       {"role": "user", "content": task}]), max_tokens=MAX_REASONING_TOKENS)
+        notes = (reply.get("content") or "").strip()[:MAX_NOTES]
+        return f"{task}\n\nYour notes from thinking this through:\n{notes}" if notes else task
+
     def _once(self, spec: AgentSpec, task: str, stream: bool = False) -> str:
         """One model call with no tools."""
-        self._emit({"type": "agent", "agent": spec.name, "label": spec.label,
-                    "model": self.provider.model_for(spec.name)})
+        self._emit({"type": "agent", "agent": spec.name, "label": spec.label, "model": self._model(spec)})
+        task = self._reasoned(spec, task)
         on_delta = (lambda text: self._emit({"type": "text_delta", "text": text})) if stream else None
-        reply = self._chat(spec, [{"role": "system", "content": spec.prompt}, {"role": "user", "content": task}],
-                           on_delta=on_delta)
+        reply = self._chat(spec, [{"role": "system", "content": self._system(spec)},
+                                  {"role": "user", "content": task}], on_delta=on_delta)
         return reply.get("content") or ""
 
     def _chat(self, spec: AgentSpec, messages: list[dict], **extra) -> dict:
         """When the strong model is out of quota, carry on with the fast one instead of stopping."""
         settings = self.provider.settings_for(spec.name)
-        model = self.provider.model_for(spec.name)
-        options = {"messages": messages, "temperature": settings.temperature,
-                   "max_tokens": settings.max_tokens, **extra}
+        model = self._model(spec)
+        options = {"messages": messages, "temperature": settings.temperature, "max_tokens": settings.max_tokens,
+                   **think_option(self._level, spec.name, self.provider.thinking_values(model)), **extra}
         try:
             reply = self.provider.client.chat(model=model, **options)
+        except Cancelled:
+            raise Stop("cancelled", "Stopped by you.")
         except Exception as e:
             fast = self.provider.tiers.get("fast")
             if not self.fallback or not is_quota_error(str(e)) or model == fast:
@@ -467,12 +623,12 @@ class AssistantSession:
         self._emit({"type": "usage", "tokens": self._spent(), "total": self.provider.meter.total_tokens})
         return reply
 
-    def _loop(self, spec: AgentSpec, task: str, history: bool = True) -> str:
-        tools = list(spec.tools)
+    def _loop(self, spec: AgentSpec, task: str, history: bool = True, quiet: bool = False) -> str:
+        tools = [name for name in spec.tools if name not in self.withheld]
         max_turns = self.max_turns or spec.max_turns
-        self._emit({"type": "agent", "agent": spec.name, "label": spec.label,
-                    "model": self.provider.model_for(spec.name)})
-        messages = [{"role": "system", "content": spec.prompt}, *(self._context() if history else []),
+        self._emit({"type": "agent", "agent": spec.name, "label": spec.label, "model": self._model(spec)})
+        task = self._reasoned(spec, task)
+        messages = [{"role": "system", "content": self._system(spec)}, *(self._context() if history else []),
                     {"role": "user", "content": task}]
         repeats: Counter = Counter()
         for _ in range(max_turns):
@@ -484,7 +640,7 @@ class AssistantSession:
                 messages.append({"role": "user", "content": TOOL_FAILED})
                 continue
             if not calls:
-                if history:
+                if history and not quiet:
                     self._emit({"type": "text_delta", "text": text})
                 return text
             messages.append({"role": "assistant", "content": text, "tool_calls": [

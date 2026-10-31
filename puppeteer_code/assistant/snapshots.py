@@ -26,11 +26,16 @@ def pcode_home() -> Path:
     return Path.home() / ".pcode"
 
 
+def project_folder(project: str | Path, home: Optional[Path] = None) -> Path:
+    """pcode's own folder for a project, outside it, so nothing in a repo can change what is kept here."""
+    key = hashlib.sha256(str(Path(project).resolve()).lower().encode("utf-8")).hexdigest()[:16]
+    return Path(home or pcode_home()) / "projects" / key
+
+
 class Snapshots:
     def __init__(self, project: str | Path, home: Optional[Path] = None):
         self.project = Path(project).resolve()
-        key = hashlib.sha256(str(self.project).lower().encode("utf-8")).hexdigest()[:16]
-        self.git_dir = Path(home or pcode_home()) / "projects" / key / "git"
+        self.git_dir = project_folder(self.project, home) / "git"
         if not (self.git_dir / "HEAD").exists():
             self.git_dir.parent.mkdir(parents=True, exist_ok=True)
             self._git("init", "--quiet", "--initial-branch=main")

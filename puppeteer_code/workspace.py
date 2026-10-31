@@ -37,6 +37,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Iterable, Optional
 
+from puppeteer_code.sandbox import DirectRunner
+
 IGNORE_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__",
     ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", "dist", "build",
@@ -233,24 +235,27 @@ def _list_source_files(src: Path) -> list[Path]:
 class Workspace:
     """An isolated, git-backed copy of the user's repository."""
 
-    def __init__(self, root: Path, base_sha: str, scratch: Path, owner: Optional["Workspace"] = None):
+    def __init__(self, root: Path, base_sha: str, scratch: Path, owner: Optional["Workspace"] = None, runner=None):
         self.root = root
         self.base_sha = base_sha
         self.scratch = scratch          # outside root: junit files, forks
         self.owner = owner
+        self.runner = runner or DirectRunner()
         self._fork_count = 0
 
     # ── construction / teardown ──────────────────────────────────────────────
 
     @classmethod
-    def create(cls, repo: str | Path, tmp_parent: Optional[str] = None) -> "Workspace":
+    def create(cls, repo: str | Path, tmp_parent: Optional[str] = None, runner=None) -> "Workspace":
         src = Path(repo).resolve()
         if not src.is_dir():
             raise WorkspaceError(f"repository not found: {src}")
         if not shutil.which("git"):
             raise WorkspaceError("git is required for the sandbox")
 
-        scratch = Path(tempfile.mkdtemp(prefix="pcode_", dir=tmp_parent))
+        scratch = Path(tempfile.mkdtemp(prefix="pcode_", dir=tmp_parent or getattr(runner, "scratch", None)))
+        if runner is not None:
+            runner.prepare(scratch)     # before any files, so they inherit the access
         root = scratch / "ws"
         root.mkdir()
         for rel in _list_source_files(src):
@@ -258,7 +263,7 @@ class Workspace:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src / rel, dest)
 
-        ws = cls(root, base_sha="", scratch=scratch)
+        ws = cls(root, base_sha="", scratch=scratch, runner=runner)
         ws.git("init", "-q")
         ws.git("config", "core.autocrlf", "false")
         ws.git("config", "core.safecrlf", "false")
@@ -331,7 +336,7 @@ class Workspace:
         self.git("worktree", "add", "-q", "--detach", str(path), sha or self.head())
         fork_scratch = self.scratch / f"fork_{self._fork_count}_meta"
         fork_scratch.mkdir(exist_ok=True)
-        return Workspace(path, self.base_sha, scratch=fork_scratch, owner=self)
+        return Workspace(path, self.base_sha, scratch=fork_scratch, owner=self, runner=self.runner)
 
     # ── file access (path-guarded) ───────────────────────────────────────────
 
@@ -391,8 +396,8 @@ class Workspace:
                f"--junitxml={junit}", "-o", "junit_family=xunit2", *(paths or [])]
         t0 = time.monotonic()
         try:
-            proc = subprocess.run(cmd, cwd=self.root, env=scrubbed_env(), stdin=subprocess.DEVNULL, capture_output=True,
-                                  text=True, encoding="utf-8", errors="replace", timeout=timeout)
+            proc = self.runner.run(cmd, cwd=self.root, env=scrubbed_env(), stdin=subprocess.DEVNULL, capture_output=True,
+                                   text=True, encoding="utf-8", errors="replace", timeout=timeout)
         except subprocess.TimeoutExpired:
             return TestResult({}, returncode=-1, duration_s=float(timeout), error=f"timeout after {timeout}s")
         duration = time.monotonic() - t0
@@ -416,9 +421,9 @@ class Workspace:
             cmd = [sys.executable, "-m", "ruff"]
         else:
             return LintResult(self.syntax_errors(files), available=False)
-        proc = subprocess.run([*cmd, "check", "--output-format=concise", "--no-cache", *files],
-                              cwd=self.root, env=scrubbed_env(), stdin=subprocess.DEVNULL, capture_output=True,
-                              text=True, encoding="utf-8", errors="replace")
+        proc = self.runner.run([*cmd, "check", "--output-format=concise", "--no-cache", *files],
+                               cwd=self.root, env=scrubbed_env(), stdin=subprocess.DEVNULL, capture_output=True,
+                               text=True, encoding="utf-8", errors="replace")
         issues = [ln for ln in proc.stdout.splitlines()
                   if re.match(r"^\S+\.py:\d+:\d+:", ln)]
         return LintResult(issues, available=True)

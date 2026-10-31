@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CaretDown, CaretRight, File } from "@phosphor-icons/react";
 import { IDE } from "@/lib/content";
+import { Codicon } from "./Codicon";
+import { FileIcon, FolderIcon } from "./FileIcon";
 
 type Node = { name: string; path: string; children: Node[] | null };
 
@@ -39,13 +40,14 @@ type Props = {
 
 function Row({ node, depth, ...props }: Props & { node: Node; depth: number }) {
   const [open, setOpen] = useState(depth < 1);
-  const pad = { paddingLeft: 10 + depth * 14 };
+  const pad = { paddingLeft: 8 + depth * 12 };
 
   if (node.children) {
     return (
       <li>
         <button type="button" className="ide-tree__row" style={pad} aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? <CaretDown size={12} aria-hidden="true" /> : <CaretRight size={12} aria-hidden="true" />}
+          <Codicon name={open ? "chevron-down" : "chevron-right"} />
+          <FolderIcon name={node.name} open={open} />
           <span>{node.name}</span>
         </button>
         {open ? (
@@ -65,11 +67,11 @@ function Row({ node, depth, ...props }: Props & { node: Node; depth: number }) {
       <button
         type="button"
         className="ide-tree__row"
-        style={pad}
+        style={{ paddingLeft: pad.paddingLeft + 18 }}
         aria-current={props.active === node.path ? "true" : undefined}
         onClick={() => props.onOpen(node.path)}
       >
-        <File size={13} aria-hidden="true" />
+        <FileIcon name={node.name} />
         <span>{node.name}</span>
         {change ? <span className="ide-tree__mark">{IDE.tree.marks[change] ?? change}</span> : null}
       </button>
