@@ -9,9 +9,9 @@ export function Nav() {
   return (
     <header className="nav">
       <div className="nav__inner">
-        <a href="#hero" onClick={scrollToHash} className="wordmark" aria-label="Puppeteer-Code, back to top">
+        <a href="#hero" onClick={scrollToHash} className="wordmark" aria-label="CompactCode, back to top">
           <span className="wordmark__mark" aria-hidden="true" />
-          Puppeteer-Code
+          CompactCode
         </a>
         <nav aria-label="Sections" className="nav__links">
           {NAV.map((item) => (

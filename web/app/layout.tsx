@@ -6,7 +6,7 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swa
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Puppeteer-Code",
+  title: "CompactCode",
   description:
     "A coding assistant that plugs into yours over MCP. Send it your failing tests, get back a diff that passes, and keep your tokens.",
 };
