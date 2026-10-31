@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Command } from "@/components/Command";
 import { DOCS } from "@/lib/content";
 
-export const metadata: Metadata = { title: "Docs · Puppeteer-Code" };
+export const metadata: Metadata = { title: "Docs · CompactCode" };
 
 export default function DocsPage() {
   return (

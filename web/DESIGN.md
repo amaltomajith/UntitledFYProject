@@ -1,4 +1,4 @@
-# Puppeteer-Code web: design system
+# CompactCode web: design system
 
 The source of truth for every page in `web/`. New pages (for example the live run dashboard)
 reuse these tokens, components and motion rules instead of inventing new ones.
@@ -67,7 +67,7 @@ Scene colours mirror these by hand: `BODY` and the face gradient in `AgentTiles.
 ## Charts (`components/app/Charts.tsx`)
 
 - One measure, one axis. Two measures means two charts.
-- `--accent-hi` marks Puppeteer-Code; other methods use `--ink-3`. Identity also comes from the label,
+- `--accent-hi` marks CompactCode; other methods use `--ink-3`. Identity also comes from the label,
   so there is no categorical palette and no legend.
 - Marks are sharp, overriding the usual rounded bar ends, because all UI here has radius 0.
 - Bars carry their value in text. Columns and lines get a hover tooltip, and every chart with no

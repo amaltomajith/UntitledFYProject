@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RESEARCH } from "@/lib/content";
 
-export const metadata: Metadata = { title: "Research · Puppeteer-Code" };
+export const metadata: Metadata = { title: "Research · CompactCode" };
 
 export default function ResearchPage() {
   return (

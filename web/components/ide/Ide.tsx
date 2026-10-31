@@ -198,7 +198,7 @@ function Workspace({ token }: { token: string }) {
       <header className="ide__bar">
         <Link href="/" className="wordmark" aria-label={IDE.home}>
           <span className="wordmark__mark" aria-hidden="true" />
-          <span className="ide__brand">Puppeteer-Code</span>
+          <span className="ide__brand">CompactCode</span>
         </Link>
         <button type="button" className="ide__project" title={project} onClick={() => setPicking(true)} disabled={view.busy}>
           {project.split(/[\\/]/).filter(Boolean).pop()}

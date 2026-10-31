@@ -246,7 +246,7 @@ python -m puppeteer_code export-web   # real results to web/public/data; refuses
   `--weights checkpoints/pcode_linear_sim.json` until a real-model training run produces one.
 - `--seeds N` is a count, not a list.
 
-## 8. Status (2026-10-30)
+## 8. Status (2026-10-31)
 
 **The assistant, built 2026-10-30 (uncommitted).** The product is now a general coding assistant:
 terminal chat (`pcode`) and browser IDE (`pcode ide`), with Fix mode inside the IDE.
@@ -277,7 +277,14 @@ primary limit 60k; `runs/buildbench-nebius-150k.json`, sensitivity run at 150k):
 **Submission state, 2026-10-30.** Public repo pushed to `main`, Apache-2.0 added by the owner's decision,
 site at https://puppeteer-code.vercel.app (`web/out`, static, no live IDE). Demo video:
 `runs/puppeteer-code-demo.mp4`, 66 s, silent, 800x450. It is gitignored, so it must be uploaded by hand.
-The owner's Devpost template calls the project **CompactCode**; the repo and site still say Puppeteer-Code.
+
+**Rename, 2026-10-31.** The product is **CompactCode** in the frontend (`web/`) by the owner's decision.
+The site is at https://compactcode.vercel.app, and https://puppeteer-code.vercel.app keeps working. The
+Vercel project is still named `puppeteer-code`. Deliberately unchanged:
+- real identifiers the docs must match: `pcode`, `python -m puppeteer_code`, `puppeteer_fix`, `x-pcode-token`;
+- the thesis name Puppeteer++, the paper's term "puppeteer", and the benchmark names (PCodeBench-*);
+- the Python side still says Puppeteer-Code: terminal UI, `report.py`, MCP server, README and this file's
+  older sections.
 
 **Done**
 - Engine fixes:
@@ -300,7 +307,7 @@ The owner's Devpost template calls the project **CompactCode**; the repo and sit
   - PCodeBench-Repo: 44 tasks in one shared repo, including 7 cross-module `repo_x_*` bugs
     whose only visible failure is in `test_report.py`.
 - Baselines: single-shot, react, react-tools.
-- Offline test suite green (last full run, 2026-10-30: 365 passed, 1 skipped, ~9 min).
+- Offline test suite green (last full run, 2026-10-31: 362 passed, 2 skipped, ~5 min).
 
 **Real results so far** (Groq gpt-oss, seed 0). Details are in README §14.4 and `runs/*.json`.
 - Mini test split (10 tasks): every method succeeds on every task. Tokens per task:
@@ -366,7 +373,7 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
   maps them. No deployment exists yet.
 - `runs/fix-20261030-183525.json` and `-183746.json` are real failed runs (Groq 429). They are not results.
 
-## 9. Next steps (in order, updated 2026-10-30)
+## 9. Next steps (in order, updated 2026-10-31)
 
 0. **Reduce the tool-loop prompt cost**, the biggest measured cost (README §14.7).
 1. **Rerun PCodeBench-Build on fresh tasks with more seeds**, so the result is a real test set:

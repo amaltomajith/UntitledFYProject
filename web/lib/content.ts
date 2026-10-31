@@ -98,7 +98,7 @@ export const START = {
   note: "Put NEBIUS_API_KEY or GROQ_API_KEY in .env first. Today the fixer works on repos with a pytest suite.",
   commands: [
     { label: "Install", cmd: 'pip install -e ".[mcp]"' },
-    { label: "Add to Claude Code", cmd: "claude mcp add puppeteer-code -- python -m puppeteer_code mcp" },
+    { label: "Add to Claude Code", cmd: "claude mcp add compactcode -- python -m puppeteer_code mcp" },
     { label: "Any other MCP client", cmd: "pcode mcp" },
     { label: "Or from your terminal", cmd: 'pcode fix "mean() is wrong for even lists" --repo path/to/repo' },
   ],
@@ -276,7 +276,7 @@ export const BENCH = {
   perTask: "Every task, tokens used",
   perTaskColumns: { task: "Task" },
   methods: {
-    heuristic: "Puppeteer-Code",
+    heuristic: "CompactCode",
     fixed: "Every agent, every bug",
     "single-shot": "One-shot prompt",
     react: "ReAct, all files",
@@ -317,7 +317,7 @@ export const DOCS = {
       title: "Use it from your assistant",
       body: "Add one MCP server. Your assistant gets puppeteer_fix, which returns a verified diff, and puppeteer_models. Nothing is written to your repo unless the call sets apply=true on a successful run.",
       commands: [
-        { label: "Claude Code", cmd: "claude mcp add puppeteer-code -- python -m puppeteer_code mcp" },
+        { label: "Claude Code", cmd: "claude mcp add compactcode -- python -m puppeteer_code mcp" },
         { label: "Any other MCP client", cmd: "pcode mcp" },
       ],
     },
@@ -365,7 +365,7 @@ export const DOCS = {
 
 export const RESEARCH = {
   title: "Research",
-  lead: "Puppeteer-Code is the applied half of Puppeteer++, a B.Tech final-year thesis at Christ University, Bengaluru.",
+  lead: "CompactCode is the applied half of Puppeteer++, a B.Tech final-year thesis at Christ University, Bengaluru.",
   sections: [
     {
       title: "The idea",
@@ -410,7 +410,7 @@ export const NOT_FOUND = {
 };
 
 export const IDE = {
-  home: "Puppeteer-Code home",
+  home: "CompactCode home",
   connecting: "Connecting to pcode ide",
   lost: "Lost the connection. Reconnecting.",
   small: "The IDE needs a wider screen. On this device, use the chat in a terminal.",

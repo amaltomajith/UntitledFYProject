@@ -17,9 +17,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
       <header className="app__bar">
-        <Link href="/" className="wordmark" aria-label="Puppeteer-Code home">
+        <Link href="/" className="wordmark" aria-label="CompactCode home">
           <span className="wordmark__mark" aria-hidden="true" />
-          Puppeteer-Code
+          CompactCode
         </Link>
         <nav aria-label="App" className="app__links">
           {APP_NAV.map((item) => (
