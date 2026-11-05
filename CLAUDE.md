@@ -58,7 +58,7 @@ here.
 **Users** install with one line (no Python or Node first) and then type `compactcode` in a project folder:
 `curl -fsSL https://compactcode.vercel.app/install.sh | sh` (macOS, Linux) or
 `irm https://compactcode.vercel.app/install.ps1 | iex` (PowerShell; cmd wraps it in `powershell -ExecutionPolicy ByPass -c "..."`).
-**These only work once a GitHub Release exists** (see §8, 2026-11-05 install block). Developers use the steps below.
+Live since 2026-11-05 (release `v0.2.0`). Developers use the steps below.
 
 Python 3.10+ (developed on 3.13, Windows 11; bash and PowerShell both work).
 
@@ -368,7 +368,9 @@ python scripts/build_release.py   # after the site build: dist/release/ = wheel 
 
 ## 8. Status (2026-11-05)
 
-**One-line install and updates, 2026-11-05 (branch `ide-terminal-redesign`, uncommitted, nothing published).** Owner's choices:
+**One-line install and updates, 2026-11-05: published.** Commit `4b390c9`, merged to `main`, tag `v0.2.0`, GitHub Release
+https://github.com/amaltomajith/UntitledFYProject/releases/tag/v0.2.0 (wheel, `SHA256SUMS`, both installers), site redeployed
+from `main`. Owner's choices:
 `compactcode` opens the browser IDE; the installer uses uv; updates notify and install on one click; IDE banner, status bar,
 terminal line and desktop notification.
 - **Package:** distribution `compactcode` 0.2.0, scripts `compactcode` (`cli.launch`) and `pcode`. The wheel carries the built
@@ -394,10 +396,12 @@ terminal line and desktop notification.
   reinstalls; no WebSocket library; the old IDE never exited; the helper waited for only 2 of 3 launcher processes;
   `DETACHED_PROCESS` made the helper PowerShell exit at once doing nothing; `*>>` wrote a UTF-16 log; the panel sat outside
   the IDE's colour tokens.
-- **Not tested:** macOS; the desktop notification itself (Chrome's permission prompt blocks the automation); a real GitHub
-  release and the real Vercel-served `install.ps1` (`irm` content type); the workflow itself (it has never run).
-- **Not published:** no tag, no release, and the live site still shows the old install text (the deploy on 2026-11-05 was
-  built from `main`, which does not have this work). Publishing the release and the site together is the owner's call.
+- **Real release, checked after publishing:** the workflow passed first time (build, wheel smoke test in a clean venv, release).
+  The real one-liners from the live site, against the real release, into throwaway folders: cmd, PowerShell and WSL Ubuntu
+  each installed 0.2.0, and `compactcode update --check` said it is the latest. Vercel serves `install.ps1` as
+  `application/octet-stream`; Windows PowerShell 5.1's `irm | iex` runs it anyway, so no `vercel.json` was needed.
+- **Not tested:** macOS; the desktop notification itself (Chrome's permission prompt blocks the automation); a real update from
+  one published release to the next (only a local fake 0.2.1 so far). The first real one happens at `v0.2.1`.
 
 **Reasoning benchmark for the thesis core, 2026-11-05.** `benchmarks/reasoning/`, write-up in `docs/BENCHMARKS.md`.
 - Runs `core.Orchestrator` unchanged against `direct`, `cot` and `fixed` (Planner, Reasoning, Critic, Concluder) on 224
@@ -669,11 +673,9 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
 
 ## 9. Next steps (in order, updated 2026-11-05)
 
-First, ship the one-line install, with the owner's go-ahead, in this order: commit the install and update work, merge to
-`main`, push; tag `v0.2.0` with release notes as the tag message and push the tag; check the workflow passed and the release
-has the wheel, `SHA256SUMS`, `install.sh` and `install.ps1`; then build the site from `main` and deploy it (the install
-commands go live only now); then run the real one-liner once in cmd, PowerShell and WSL. If `irm` gets a binary content type
-from Vercel, add a `vercel.json` header for `.ps1`. Later releases: bump `__version__`, tag, push.
+Releases (since `v0.2.0`): bump `__version__` in `puppeteer_code/__init__.py`, commit, merge to `main`, then
+`git tag -a vX.Y.Z -m "<notes>"` on `main` and push the tag; the workflow publishes. Installed copies see it within a day.
+The first real update (`v0.2.1`) is also the first real test of "Update and restart" between published releases.
 
 Reasoning benchmark, done 2026-11-05 (final numbers in §8 and `docs/BENCHMARKS.md`). Next for it: 3 seeds, thinking on, `nemotron-3-super-120b-a12b`.
 
