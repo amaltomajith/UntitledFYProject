@@ -311,7 +311,7 @@ function ReasoningSection({ r }: { r: ReasoningBench }) {
             r.provider,
             BENCH.taskCount(n),
             BENCH.seeds(r.seeds?.length ?? 1),
-            R.facts(r.model ?? "?", cfg.thinking ?? "default", cfg.max_steps ?? 4),
+            R.facts(cfg.thinking ?? "default", cfg.max_steps ?? 4),
             r.excluded ? BENCH.excluded(r.excluded) : null,
           ]
             .filter(Boolean)

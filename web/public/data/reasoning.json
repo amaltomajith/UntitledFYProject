@@ -1,0 +1,492 @@
+[
+ {
+  "id": "reasoning-nebius-lightning",
+  "provider": "nebius",
+  "model": "nvidia/Nemotron-3_5-Lightning",
+  "config": {
+   "thinking": "off",
+   "max_steps": 4,
+   "max_tokens": 4096,
+   "policy_max_tokens": 1024,
+   "baseline_temperature": 0.7,
+   "fixed_order": [
+    "PlannerAgent",
+    "ReasoningAgent",
+    "CriticAgent",
+    "ConcluderAgent"
+   ]
+  },
+  "datasets": [
+   "gsm8k",
+   "gsm-hard",
+   "mmlu-pro",
+   "bbh"
+  ],
+  "methods": [
+   "direct",
+   "cot",
+   "fixed",
+   "puppeteer"
+  ],
+  "seeds": [
+   0
+  ],
+  "partial": true,
+  "excluded": 0,
+  "tasks": {
+   "gsm8k": 50,
+   "gsm-hard": 50,
+   "mmlu-pro": 4
+  },
+  "summary": {
+   "gsm8k": {
+    "methods": {
+     "cot": {
+      "n": 50,
+      "correct": 28,
+      "accuracy": 0.56,
+      "ci95": [
+       0.4230602802165686,
+       0.6883780078874284
+      ],
+      "tokens": 246.56,
+      "prompt_tokens": 146.84,
+      "completion_tokens": 99.72,
+      "calls": 1.0,
+      "cost_usd": 3.2743199999999995e-05,
+      "cost_usd_total": 0.00163716,
+      "tokens_per_correct": 440.2857142857143,
+      "no_answer_tag": 14,
+      "wall_s": 0.7432,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     },
+     "direct": {
+      "n": 50,
+      "correct": 7,
+      "accuracy": 0.14,
+      "ci95": [
+       0.06950833427016294,
+       0.2618619371058554
+      ],
+      "tokens": 142.66,
+      "prompt_tokens": 138.84,
+      "completion_tokens": 3.82,
+      "calls": 1.0,
+      "cost_usd": 9.2472e-06,
+      "cost_usd_total": 0.00046236,
+      "tokens_per_correct": 1019.0,
+      "no_answer_tag": 50,
+      "wall_s": 0.35340000000000005,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     },
+     "fixed": {
+      "n": 50,
+      "correct": 46,
+      "accuracy": 0.92,
+      "ci95": [
+       0.8116175308165717,
+       0.968450485911407
+      ],
+      "tokens": 2497.22,
+      "prompt_tokens": 1631.72,
+      "completion_tokens": 865.5,
+      "calls": 4.0,
+      "cost_usd": 0.00030562319999999994,
+      "cost_usd_total": 0.015281159999999998,
+      "tokens_per_correct": 2714.3695652173915,
+      "no_answer_tag": 0,
+      "wall_s": 4.5634,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     },
+     "puppeteer": {
+      "n": 50,
+      "correct": 47,
+      "accuracy": 0.94,
+      "ci95": [
+       0.8378290831116182,
+       0.979385029651026
+      ],
+      "tokens": 3921.8,
+      "prompt_tokens": 3061.4,
+      "completion_tokens": 860.4,
+      "calls": 7.12,
+      "cost_usd": 0.00039017999999999995,
+      "cost_usd_total": 0.019509,
+      "tokens_per_correct": 4172.127659574468,
+      "no_answer_tag": 0,
+      "wall_s": 3.3372,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     }
+    },
+    "paired": {
+     "direct": {
+      "shared": 50,
+      "ours_only": 40,
+      "theirs_only": 0,
+      "p_mcnemar": 1.8189894035458565e-12
+     },
+     "cot": {
+      "shared": 50,
+      "ours_only": 20,
+      "theirs_only": 1,
+      "p_mcnemar": 2.09808349609375e-05
+     },
+     "fixed": {
+      "shared": 50,
+      "ours_only": 1,
+      "theirs_only": 0,
+      "p_mcnemar": 1.0
+     }
+    }
+   },
+   "all": {
+    "methods": {
+     "cot": {
+      "n": 104,
+      "correct": 53,
+      "accuracy": 0.5096153846153846,
+      "ci95": [
+       0.41492159966774017,
+       0.6036241435174049
+      ],
+      "tokens": 306.52884615384613,
+      "prompt_tokens": 154.375,
+      "completion_tokens": 152.15384615384616,
+      "calls": 1.0,
+      "cost_usd": 4.577942307692307e-05,
+      "cost_usd_total": 0.004761059999999999,
+      "tokens_per_correct": 601.4905660377359,
+      "no_answer_tag": 36,
+      "wall_s": 0.9940384615384615,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 104
+      }
+     },
+     "direct": {
+      "n": 104,
+      "correct": 14,
+      "accuracy": 0.1346153846153846,
+      "ci95": [
+       0.08191117076579206,
+       0.21335058819869201
+      ],
+      "tokens": 151.47115384615384,
+      "prompt_tokens": 146.375,
+      "completion_tokens": 5.096153846153846,
+      "calls": 1.0,
+      "cost_usd": 1.0005576923076923e-05,
+      "cost_usd_total": 0.00104058,
+      "tokens_per_correct": 1125.2142857142858,
+      "no_answer_tag": 104,
+      "wall_s": 0.37124999999999997,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 104
+      }
+     },
+     "fixed": {
+      "n": 104,
+      "correct": 80,
+      "accuracy": 0.7692307692307693,
+      "ci95": [
+       0.6795448838800338,
+       0.8397359253040306
+      ],
+      "tokens": 2654.971153846154,
+      "prompt_tokens": 1711.826923076923,
+      "completion_tokens": 943.1442307692307,
+      "calls": 4.0,
+      "cost_usd": 0.00032906423076923077,
+      "cost_usd_total": 0.03422268,
+      "tokens_per_correct": 3451.4625,
+      "no_answer_tag": 0,
+      "wall_s": 5.968846153846154,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 104
+      }
+     },
+     "puppeteer": {
+      "n": 103,
+      "correct": 85,
+      "accuracy": 0.8252427184466019,
+      "ci95": [
+       0.7405963558470099,
+       0.8865010344314423
+      ],
+      "tokens": 4242.922330097087,
+      "prompt_tokens": 3111.135922330097,
+      "completion_tokens": 1131.7864077669904,
+      "calls": 7.087378640776699,
+      "cost_usd": 0.00045829689320388343,
+      "cost_usd_total": 0.047204579999999996,
+      "tokens_per_correct": 5141.423529411764,
+      "no_answer_tag": 0,
+      "wall_s": 6.062718446601942,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 103
+      }
+     }
+    },
+    "paired": {
+     "direct": {
+      "shared": 103,
+      "ours_only": 71,
+      "theirs_only": 0,
+      "p_mcnemar": 8.470329472543003e-22
+     },
+     "cot": {
+      "shared": 103,
+      "ours_only": 34,
+      "theirs_only": 2,
+      "p_mcnemar": 1.941225491464138e-08
+     },
+     "fixed": {
+      "shared": 103,
+      "ours_only": 6,
+      "theirs_only": 1,
+      "p_mcnemar": 0.125
+     }
+    }
+   },
+   "gsm-hard": {
+    "methods": {
+     "cot": {
+      "n": 50,
+      "correct": 23,
+      "accuracy": 0.46,
+      "ci95": [
+       0.3296965219222435,
+       0.5960112860084253
+      ],
+      "tokens": 327.56,
+      "prompt_tokens": 149.18,
+      "completion_tokens": 178.38,
+      "calls": 1.0,
+      "cost_usd": 5.1762e-05,
+      "cost_usd_total": 0.0025881,
+      "tokens_per_correct": 712.0869565217391,
+      "no_answer_tag": 22,
+      "wall_s": 1.0298,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     },
+     "direct": {
+      "n": 50,
+      "correct": 5,
+      "accuracy": 0.1,
+      "ci95": [
+       0.04347576493189041,
+       0.21360231437479654
+      ],
+      "tokens": 147.8,
+      "prompt_tokens": 141.18,
+      "completion_tokens": 6.62,
+      "calls": 1.0,
+      "cost_usd": 1.00596e-05,
+      "cost_usd_total": 0.00050298,
+      "tokens_per_correct": 1478.0,
+      "no_answer_tag": 50,
+      "wall_s": 0.3874,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     },
+     "fixed": {
+      "n": 50,
+      "correct": 32,
+      "accuracy": 0.64,
+      "ci95": [
+       0.501410168761127,
+       0.7586125034815325
+      ],
+      "tokens": 2698.6,
+      "prompt_tokens": 1705.0,
+      "completion_tokens": 993.6,
+      "calls": 4.0,
+      "cost_usd": 0.000340764,
+      "cost_usd_total": 0.0170382,
+      "tokens_per_correct": 4216.5625,
+      "no_answer_tag": 0,
+      "wall_s": 5.7078,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     },
+     "puppeteer": {
+      "n": 50,
+      "correct": 36,
+      "accuracy": 0.72,
+      "ci95": [
+       0.5833487630404344,
+       0.8252582933408878
+      ],
+      "tokens": 4583.62,
+      "prompt_tokens": 3174.72,
+      "completion_tokens": 1408.9,
+      "calls": 7.16,
+      "cost_usd": 0.0005286192,
+      "cost_usd_total": 0.02643096,
+      "tokens_per_correct": 6366.138888888889,
+      "no_answer_tag": 0,
+      "wall_s": 8.6792,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 50
+      }
+     }
+    },
+    "paired": {
+     "direct": {
+      "shared": 50,
+      "ours_only": 31,
+      "theirs_only": 0,
+      "p_mcnemar": 9.313225746154785e-10
+     },
+     "cot": {
+      "shared": 50,
+      "ours_only": 14,
+      "theirs_only": 1,
+      "p_mcnemar": 0.0009765625
+     },
+     "fixed": {
+      "shared": 50,
+      "ours_only": 5,
+      "theirs_only": 1,
+      "p_mcnemar": 0.21875
+     }
+    }
+   },
+   "mmlu-pro": {
+    "methods": {
+     "cot": {
+      "n": 4,
+      "correct": 2,
+      "accuracy": 0.5,
+      "ci95": [
+       0.15003898915214947,
+       0.8499610108478506
+      ],
+      "tokens": 793.25,
+      "prompt_tokens": 313.5,
+      "completion_tokens": 479.75,
+      "calls": 1.0,
+      "cost_usd": 0.00013395,
+      "cost_usd_total": 0.0005358,
+      "tokens_per_correct": 1586.5,
+      "no_answer_tag": 0,
+      "wall_s": 3.6825,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 4
+      }
+     },
+     "direct": {
+      "n": 4,
+      "correct": 2,
+      "accuracy": 0.5,
+      "ci95": [
+       0.15003898915214947,
+       0.8499610108478506
+      ],
+      "tokens": 307.5,
+      "prompt_tokens": 305.5,
+      "completion_tokens": 2.0,
+      "calls": 1.0,
+      "cost_usd": 1.8809999999999998e-05,
+      "cost_usd_total": 7.523999999999999e-05,
+      "tokens_per_correct": 615.0,
+      "no_answer_tag": 4,
+      "wall_s": 0.3925,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 4
+      }
+     },
+     "fixed": {
+      "n": 4,
+      "correct": 2,
+      "accuracy": 0.5,
+      "ci95": [
+       0.15003898915214947,
+       0.8499610108478506
+      ],
+      "tokens": 4081.5,
+      "prompt_tokens": 2798.5,
+      "completion_tokens": 1283.0,
+      "calls": 4.0,
+      "cost_usd": 0.00047583,
+      "cost_usd_total": 0.00190332,
+      "tokens_per_correct": 8163.0,
+      "no_answer_tag": 0,
+      "wall_s": 26.8,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 4
+      }
+     },
+     "puppeteer": {
+      "n": 3,
+      "correct": 2,
+      "accuracy": 0.6666666666666666,
+      "ci95": [
+       0.2076596008020477,
+       0.9385080552796037
+      ],
+      "tokens": 3916.6666666666665,
+      "prompt_tokens": 2880.3333333333335,
+      "completion_tokens": 1036.3333333333333,
+      "calls": 5.333333333333333,
+      "cost_usd": 0.00042154,
+      "cost_usd_total": 0.00126462,
+      "tokens_per_correct": 5875.0,
+      "no_answer_tag": 0,
+      "wall_s": 7.88,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 3
+      }
+     }
+    },
+    "paired": {
+     "direct": {
+      "shared": 3,
+      "ours_only": 0,
+      "theirs_only": 0,
+      "p_mcnemar": 1.0
+     },
+     "cot": {
+      "shared": 3,
+      "ours_only": 0,
+      "theirs_only": 0,
+      "p_mcnemar": 1.0
+     },
+     "fixed": {
+      "shared": 3,
+      "ours_only": 0,
+      "theirs_only": 0,
+      "p_mcnemar": 1.0
+     }
+    }
+   }
+  }
+ }
+]

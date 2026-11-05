@@ -1,0 +1,76 @@
+[
+ {
+  "id": "buildbench-nebius",
+  "provider": "nebius",
+  "dataset": "PCodeBench-Build",
+  "methods": [
+   "heuristic",
+   "direct"
+  ],
+  "tasks": 9,
+  "seeds": 1,
+  "token_limit": 60000,
+  "role": "primary",
+  "models": [
+   "fast",
+   "quality"
+  ],
+  "runs": 18,
+  "provider_errors": 0,
+  "summary": {
+   "direct": {
+    "runs": 9,
+    "success": 0.7777777777777778,
+    "tests_passed": 0.8983050847457628,
+    "tokens": 25573.444444444445,
+    "cost_usd": 0.009165833333333333,
+    "false_claims": 2
+   },
+   "heuristic": {
+    "runs": 9,
+    "success": 0.6666666666666666,
+    "tests_passed": 0.8181818181818182,
+    "tokens": 51574.555555555555,
+    "cost_usd": 0.018810513333333334,
+    "false_claims": 0
+   }
+  }
+ },
+ {
+  "id": "buildbench-nebius-150k",
+  "provider": "nebius",
+  "dataset": "PCodeBench-Build",
+  "methods": [
+   "heuristic",
+   "direct"
+  ],
+  "tasks": 9,
+  "seeds": 1,
+  "token_limit": 150000,
+  "role": "sensitivity",
+  "models": [
+   "fast",
+   "quality"
+  ],
+  "runs": 18,
+  "provider_errors": 0,
+  "summary": {
+   "direct": {
+    "runs": 9,
+    "success": 0.7777777777777778,
+    "tests_passed": 0.8983050847457628,
+    "tokens": 27642.222222222223,
+    "cost_usd": 0.009887333333333333,
+    "false_claims": 2
+   },
+   "heuristic": {
+    "runs": 9,
+    "success": 0.7777777777777778,
+    "tests_passed": 0.8983050847457628,
+    "tokens": 81800.88888888889,
+    "cost_usd": 0.03136612666666667,
+    "false_claims": 0
+   }
+  }
+ }
+]
