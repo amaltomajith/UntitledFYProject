@@ -480,6 +480,11 @@ export function useIde(client: IdeClient) {
       ws.onopen = () => ws.send(JSON.stringify({ token: client.token, workspace: client.workspace, since: seq.current }));
       ws.onmessage = (message) => {
         const event = JSON.parse(message.data) as Event;
+        if ((event as { type: string }).type === "update_available") {
+          // Updates belong to the whole IDE, not this folder: the update panel listens for this.
+          window.dispatchEvent(new CustomEvent("pcode:update-available"));
+          return;
+        }
         if (event.type === "hello") {
           setLink("open");
           setState(event.state);

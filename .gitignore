@@ -20,3 +20,6 @@ refs/
 .pytest_cache/
 .claude/worktrees/
 .claude/settings.local.json
+
+# The IDE page bundled into the wheel by scripts/build_release.py, only while building
+puppeteer_code/site/

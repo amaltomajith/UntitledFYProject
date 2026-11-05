@@ -5,7 +5,7 @@ import { Check, Copy } from "@phosphor-icons/react";
 
 type CopyState = "idle" | "copied" | "failed";
 
-export function Command({ label, cmd }: { label: string; cmd: string }) {
+export function Command({ label, cmd, prompt = "$" }: { label: string; cmd: string; prompt?: string }) {
   const [state, setState] = useState<CopyState>("idle");
 
   const copy = async () => {
@@ -23,7 +23,7 @@ export function Command({ label, cmd }: { label: string; cmd: string }) {
       <span className="cmd__label">{label}</span>
       <code className="cmd__code">
         <span className="cmd__prompt" aria-hidden="true">
-          $
+          {prompt}
         </span>
         {cmd}
       </code>

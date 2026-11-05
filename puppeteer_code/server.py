@@ -360,8 +360,9 @@ def export_web(runs_dir: Path, out_dir: Path) -> dict:
 
 def create_app(runs_dir: Optional[Path] = None, static_dir: Optional[Path] = None,
                session_factory: Optional[Callable] = None, port: int = 8765, ide=None) -> FastAPI:
-    runs_dir = Path(runs_dir or ROOT / "runs")
-    static_dir = Path(static_dir or ROOT / "web" / "out")
+    from puppeteer_code import paths
+    runs_dir = Path(runs_dir or paths.runs_dir())
+    static_dir = Path(static_dir or paths.site_dir())
     manager = RunManager(runs_dir, session_factory or default_session)
     app = FastAPI(title="Puppeteer-Code", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.manager = manager
@@ -523,6 +524,8 @@ def serve(host_port: int = 8765, mock_solution: Optional[str] = None, ide=None) 
     factory = None
     if mock_solution:
         factory = lambda provider: default_session(provider, mock_solution)   # noqa: E731
-    uvicorn.run(create_app(session_factory=factory, port=host_port, ide=ide), host="127.0.0.1",
-                port=host_port, log_level="warning",
-                ws_per_message_deflate=False)
+    app = create_app(session_factory=factory, port=host_port, ide=ide)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=host_port, log_level="warning",
+                                           ws_per_message_deflate=False, timeout_graceful_shutdown=5))
+    app.state.server = server          # lets "Update and restart" stop the server cleanly
+    server.run()

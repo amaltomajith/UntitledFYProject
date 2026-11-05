@@ -2,6 +2,7 @@
 
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { Command } from "@/components/Command";
+import { InstallTabs } from "@/components/InstallTabs";
 import { CTA_LABEL, GITHUB_URL, START } from "@/lib/content";
 
 export function GetStarted() {
@@ -12,8 +13,10 @@ export function GetStarted() {
           <div>
             <h2 className="display-3">{START.title}</h2>
             <p className="lead">{START.note}</p>
+            <InstallTabs />
+            <p className="start__then">{START.then}</p>
 
-            <ol className="cmds">
+            <ol className="cmds cmds--tight">
               {START.commands.map((c) => (
                 <Command key={c.label} {...c} />
               ))}

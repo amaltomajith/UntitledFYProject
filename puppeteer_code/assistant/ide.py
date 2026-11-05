@@ -26,6 +26,7 @@ from typing import Callable, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from puppeteer_code import updates
 from puppeteer_code.assistant.activity import TRANSIENT
 from puppeteer_code.assistant.effort import LEVELS
 from puppeteer_code.assistant.permissions import REFUSE, classify_command, is_protected
@@ -597,6 +598,21 @@ class FolderRequest(BaseModel):
     path: Optional[str] = None
 
 
+class UpdateSettings(BaseModel):
+    auto: bool
+
+
+UPDATE_EXIT_AFTER = 15.0     # seconds after "Update and restart" before the process ends itself
+
+
+def _force_exit(hub: "IdeHub") -> None:
+    """Last resort after an update was handed over: close shells and folders, then end the process."""
+    try:
+        hub.close()
+    finally:
+        os._exit(0)
+
+
 def register_ide(app: FastAPI, first: IdeHub) -> None:
     first.manager = app.state.manager
     spaces = Workspaces(first)
@@ -654,6 +670,59 @@ def register_ide(app: FastAPI, first: IdeHub) -> None:
     @app.get("/api/ide/state", dependencies=guard)
     def state(hub: IdeHub = Depends(current)):
         return hub.state()
+
+    # ── updates: checked against GitHub releases, installed only when the user clicks ──
+
+    def any_private() -> bool:
+        return any(h.private for h in spaces.hubs.values())
+
+    def update_state() -> dict:
+        s = updates.state(spaces.first.home, private=any_private())
+        busy = any(h.busy for h in spaces.hubs.values())
+        s["can_apply"] = s["available"] and s["kind"] != "source" and not busy
+        s["blocked"] = ("source" if s["kind"] == "source" else "busy" if busy else None) if s["available"] else None
+        return s
+
+    def announce(s: dict) -> None:
+        if s["available"]:
+            for h in list(spaces.hubs.values()):
+                h.publish({"type": "update_available", "latest": s["latest"], "current": s["current"]}, keep=False)
+
+    @app.get("/api/ide/update", dependencies=guard)
+    def update_get():
+        s = update_state()
+        before = s["latest"]
+        updates.refresh_in_background(spaces.first.home, private=any_private(),
+                                      done=lambda new: announce(update_state()) if new["latest"] != before else None)
+        return s
+
+    @app.post("/api/ide/update/check", dependencies=guard)
+    def update_check():
+        updates.check(force=True, home=spaces.first.home, private=any_private())
+        s = update_state()
+        announce(s)
+        return s
+
+    @app.put("/api/ide/update/settings", dependencies=guard)
+    def update_settings(body: UpdateSettings):
+        updates.set_auto(body.auto, home=spaces.first.home)
+        return update_state()
+
+    @app.post("/api/ide/update/apply", dependencies=guard, status_code=202)
+    def update_apply():
+        if any(h.busy for h in spaces.hubs.values()):
+            raise HTTPException(409, {"code": "busy", "message": "Wait for the running request to finish, then update."})
+        try:
+            info = updates.apply(home=spaces.first.home)
+        except updates.UpdateError as e:
+            raise HTTPException(409, {"code": "update_refused", "message": str(e)}) from e
+        server = getattr(app.state, "server", None)
+        if server is not None:          # let this response go out, then stop; the helper waits for the exit
+            threading.Timer(0.8, lambda: setattr(server, "should_exit", True)).start()
+            watchdog = threading.Timer(UPDATE_EXIT_AFTER, lambda: _force_exit(spaces.first))
+            watchdog.daemon = True      # an open connection or a stuck thread must not keep the old version alive
+            watchdog.start()
+        return info
 
     @app.post("/api/ide/keys", dependencies=guard)
     def keys(body: KeyRequest, hub: IdeHub = Depends(current)):

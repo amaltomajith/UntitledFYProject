@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type LayoutStorage } from "react-resizable-panels";
 import { Command } from "@/components/Command";
+import { InstallTabs } from "@/components/InstallTabs";
 import { IDE } from "@/lib/content";
 import { IdeError, ideCall, post, readToken, useIde, type IdeState, type Mode, type IdeClient } from "@/lib/ide";
 import { BottomPanel, type BottomTab } from "./BottomPanel";
@@ -22,6 +23,7 @@ import { dropInto, shellIcon, TerminalSlot } from "./terminal/TerminalPanel";
 import { DRAG_TYPE, useTerminals } from "./terminal/useTerminals";
 import { SessionPicker } from "./SessionPicker";
 import { useCommands } from "./useCommands";
+import { UpdateBanner, UpdatePanel, UpdateStatus, UpdatesProvider, useUpdates } from "./Updates";
 
 const Loading = () => <div className="ide-pane__note">{IDE.editor.loading}</div>;
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false, loading: Loading });
@@ -303,6 +305,7 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
     }
   };
 
+  const updates = useUpdates();
   const setMode = async (mode: Mode) => setState(await post(client, "mode", { mode }));
   const setPrivate = (on: boolean) => void commands.run(`/private ${on ? "on" : "off"}`);
 
@@ -318,6 +321,7 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
     showChanges: () => show({ kind: "changes" }),
     showPreview: () => show({ kind: "preview" }),
     pickFolder: () => setPicking(true),
+    openUpdates: () => updates?.setOpen(true),
   });
 
   if (link === "denied") {
@@ -589,6 +593,7 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
           {link === "open" ? IDE.status.connected : IDE.lost}
         </span>
         <span className="ide__spacer" />
+        <UpdateStatus />
         <button type="button" title={IDE.status.terminalHint} aria-pressed={bottomOpen} onClick={toggleBottom}>
           <Codicon name="terminal" />
           {IDE.status.terminal}
@@ -632,6 +637,9 @@ function NoToken() {
       <section className="ide-setup__card panel">
         <h1>{IDE.noToken.title}</h1>
         <p className="muted">{IDE.noToken.body}</p>
+        <p className="ide-setup__step">{IDE.noToken.install}</p>
+        <InstallTabs />
+        <p className="ide-setup__step">{IDE.noToken.start}</p>
         <ol className="cmds cmds--tight">
           {IDE.noToken.commands.map((c) => (
             <Command key={c.label} {...c} />
@@ -774,38 +782,44 @@ function Folders({ token }: { token: string }) {
   if (!list) return <div className="ide-setup muted">{error ?? IDE.connecting}</div>;
 
   return (
-    <div className="ide-shell">
-      <header className="ide__bar">
-        <Link href="/" className="wordmark" aria-label={IDE.home}>
-          <span className="wordmark__mark" aria-hidden="true" />
-          <span className="ide__brand">CompactCode</span>
-        </Link>
-        <FolderTabs
-          folders={list.folders}
-          saved={list.saved}
-          active={active}
-          status={status}
-          error={error}
-          onPick={setActive}
-          onAdd={() => void add()}
-          onClose={(id) => void close(id)}
-          onReopen={(path) => void reopen(path)}
-          onForget={(path) => void forget(path)}
-        />
-      </header>
-      <div className="ide-folders">
-        {list.folders.map((folder) => (
-          <Folder
-            key={`${folder.id}:${reopened[folder.id] ?? 0}`}
-            token={token}
-            id={folder.id}
-            active={folder.id === active}
-            onStatus={report}
-            onGone={() => void load().catch(() => setError(IDE.lost))}
+    <UpdatesProvider server={server}>
+      <div className="ide-shell">
+        <header className="ide__bar">
+          <Link href="/" className="wordmark" aria-label={IDE.home}>
+            <span className="wordmark__mark" aria-hidden="true" />
+            <span className="ide__brand">CompactCode</span>
+          </Link>
+          <FolderTabs
+            folders={list.folders}
+            saved={list.saved}
+            active={active}
+            status={status}
+            error={error}
+            onPick={setActive}
+            onAdd={() => void add()}
+            onClose={(id) => void close(id)}
+            onReopen={(path) => void reopen(path)}
+            onForget={(path) => void forget(path)}
           />
-        ))}
+        </header>
+        <div className="ide-update-slot">
+          <UpdateBanner />
+        </div>
+        <div className="ide-folders">
+          {list.folders.map((folder) => (
+            <Folder
+              key={`${folder.id}:${reopened[folder.id] ?? 0}`}
+              token={token}
+              id={folder.id}
+              active={folder.id === active}
+              onStatus={report}
+              onGone={() => void load().catch(() => setError(IDE.lost))}
+            />
+          ))}
+        </div>
+        <UpdatePanel />
       </div>
-    </div>
+    </UpdatesProvider>
   );
 }
 

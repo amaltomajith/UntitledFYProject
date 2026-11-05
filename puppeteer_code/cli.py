@@ -150,7 +150,8 @@ def cmd_fix(args) -> int:
     if final["integrity_violations"]:
         say(f"Integrity violations: {final['integrity_violations']}", "red")
 
-    out_dir = Path(args.out)
+    from puppeteer_code import paths
+    out_dir = Path(args.out) if args.out else paths.runs_dir()
     stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     path = result.save(out_dir / f"fix-{stamp}.json")
     say(f"Run saved to {path}")
@@ -252,29 +253,94 @@ def cmd_ide(args) -> int:
     except ImportError:
         print("The IDE needs FastAPI and uvicorn: pip install fastapi uvicorn", file=sys.stderr)
         return 1
-    if not (ROOT / "web" / "out" / "ide.html").exists():
-        say("The IDE page is not built yet. Run: cd web && npm ci && npm run build", "red")
+    from puppeteer_code import paths, updates
+    if not paths.site_ready():
+        if paths.is_source_checkout():
+            say("The IDE page is not built yet. Run: cd web && npm ci && npm run build", "red")
+        else:
+            say("This copy of CompactCode has no IDE page. Reinstall it with the command on "
+                "https://compactcode.vercel.app", "red")
         return 1
+    port = free_port(args.port)
+    if port is None:
+        say(f"Ports {args.port} to {args.port + 19} are all in use. Pass --port with a free one.", "red")
+        return 1
+    if port != args.port:
+        say(f"Port {args.port} is in use, so CompactCode uses {port}.")
     hub = make_hub(args.provider, args.mode, args.cache, args.effort, args.private)
     if args.folder:
         hub.open(args.folder)
-    url = f"http://127.0.0.1:{args.port}/ide#token={hub.token}"
-    say(f"Puppeteer-Code IDE: {url}  (Ctrl+C to stop)")
+    url = f"http://127.0.0.1:{port}/ide#token={hub.token}"
+    say(f"CompactCode IDE: {url}  (Ctrl+C to stop)")
+    line = updates.notice(private=args.provider == "local")
+    if line:
+        say(line, "dim")
     if not args.no_browser:
         import threading
         import webbrowser
         threading.Timer(1.0, webbrowser.open, [url]).start()
     try:
-        serve(args.port, ide=hub)
+        serve(port, ide=hub)
     finally:
         hub.close()
+    return 0
+
+
+def free_port(start: int, tries: int = 20):
+    """The first port from `start` that nothing on 127.0.0.1 is listening on, or None."""
+    import socket
+    for port in range(start, start + tries):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    return None
+
+
+def cmd_update(args) -> int:
+    from puppeteer_code import __version__, updates
+    say(f"CompactCode {__version__}. Checking GitHub for a newer release...")
+    s = updates.check(force=True)
+    if s["error"]:
+        say(s["error"], "red")
+        return 1
+    if not s["available"]:
+        say(f"You have the latest version ({s['current']}).", "green")
+        return 0
+    say(f"CompactCode {s['latest']} is available.", "green")
+    if s["notes"]:
+        say(s["notes"].strip()[:1200])
+    if args.check:
+        say(f"Install it with: {updates.UPDATE_COMMAND}")
+        return 0
+    if s["kind"] == "source":
+        say("This copy runs from a git checkout. Update it with: git pull", "red")
+        return 1
+    if not args.yes:
+        try:
+            if input(f"Install {s['latest']} now? [y/N] ").strip().lower() not in ("y", "yes"):
+                say("Not installed.")
+                return 0
+        except EOFError:
+            say("Not installed (no answer). Pass --yes to skip the question.")
+            return 1
+    try:
+        info = updates.apply(relaunch=False)
+    except updates.UpdateError as e:
+        say(str(e), "red")
+        return 1
+    say(f"Downloaded and verified {info['to']}. It installs as soon as this command exits.", "green")
+    say(f"Log: {info['log']}. Then type compactcode.")
     return 0
 
 
 def cmd_export_web(args) -> int:
     from puppeteer_code.server import export_web
     info = export_web(Path(args.runs), Path(args.out))
-    say(f"Wrote {info['benchmarks']} benchmark(s), {info['training']} training run(s) to {args.out}")
+    say(f"Wrote {info['benchmarks']} fix benchmark(s), {info.get('build', 0)} build run(s), "
+        f"{info.get('reasoning', 0)} reasoning run(s), {info['training']} training run(s) to {args.out}")
     say(f"Demo run: {info['demo_run'] or 'none yet (needs a successful fix on a real provider)'}")
     return 0
 
@@ -282,7 +348,9 @@ def cmd_export_web(args) -> int:
 # ── parser ───────────────────────────────────────────────────────────────────
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="pcode", description="Puppeteer-Code: RL-orchestrated coding agents")
+    from puppeteer_code import __version__
+    p = argparse.ArgumentParser(prog="pcode", description="CompactCode (Puppeteer-Code): RL-orchestrated coding agents")
+    p.add_argument("--version", action="version", version=f"CompactCode {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def provider_args(sp):
@@ -321,7 +389,7 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--budget-tokens", type=int, default=None)
     f.add_argument("--test-timeout", type=int, default=120)
     f.add_argument("--seed", type=int, default=None)
-    f.add_argument("--out", default=str(ROOT / "runs"))
+    f.add_argument("--out", default=None, help="where to save the run (default: runs/ in a checkout, else ~/.pcode/runs)")
     f.add_argument("--apply", action="store_true", help="apply the verified diff to --repo (asks first)")
     f.add_argument("--yes", action="store_true", help="with --apply: do not ask for confirmation")
     f.add_argument("--quiet", action="store_true")
@@ -352,6 +420,11 @@ def build_parser() -> argparse.ArgumentParser:
     id_.add_argument("--no-browser", action="store_true", help="print the link but do not open it")
     id_.set_defaults(func=cmd_ide)
 
+    up = sub.add_parser("update", help="check for a newer CompactCode and install it")
+    up.add_argument("--check", action="store_true", help="only say whether one is available")
+    up.add_argument("--yes", "-y", action="store_true", help="install without asking")
+    up.set_defaults(func=cmd_update)
+
     ex = sub.add_parser("export-web", help="write real results to web/public/data for the hosted site")
     ex.add_argument("--runs", default=str(ROOT / "runs"))
     ex.add_argument("--out", default=str(ROOT / "web" / "public" / "data"))
@@ -367,9 +440,39 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _plain_folder(folder: Path, home: Path | None = None) -> bool:
+    """True for a folder worth opening as a project: not the home folder, a drive root or a system folder."""
+    import os
+    home = (home or Path.home()).resolve()
+    folder = folder.resolve()
+    if folder == home or folder.parent == folder:
+        return False
+    system = [Path(os.environ[k]).resolve() for k in ("SYSTEMROOT", "WINDIR", "PROGRAMFILES", "PROGRAMFILES(X86)")
+              if os.environ.get(k)]
+    system += [Path(p) for p in ("/usr", "/bin", "/sbin", "/etc", "/System", "/Library")]
+    return not any(folder == s or s in folder.parents for s in system if s.parent != s)
+
+
+def launch_argv(argv: list[str], cwd: Path, home: Path | None = None) -> list[str]:
+    """`compactcode` opens the browser IDE; `compactcode <command> ...` is the same as `pcode <command> ...`."""
+    commands = set(build_parser()._subparsers._group_actions[0].choices)          # noqa: SLF001
+    if argv and (argv[0] in commands or argv[0] in ("-h", "--help", "--version")):
+        return argv
+    out = ["ide", *argv]
+    if "--folder" not in argv and _plain_folder(cwd, home):
+        out += ["--folder", str(cwd)]
+    return out
+
+
+def launch(argv=None) -> int:
+    """Entry point of the `compactcode` command."""
+    argv = sys.argv[1:] if argv is None else list(argv)
+    return main(launch_argv(argv, Path.cwd()))
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
-    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help", "--version")):
         argv.insert(0, "chat")
     args = build_parser().parse_args(argv)
     if getattr(args, "private", False):
