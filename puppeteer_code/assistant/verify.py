@@ -171,7 +171,7 @@ def run_checks(root: Path, toolbox) -> Check:
     toolbox.safe_commands = [command for _, command in commands]
     result: Optional[Check] = None
     for kind, command in commands:
-        code, output = toolbox.run(command, TIMEOUT)
+        code, output = toolbox.run(toolbox.runner.adapt(command), TIMEOUT)
         if "no tests ran" in output or "no tests collected" in output:
             continue
         passed, failed = _counts(output)

@@ -21,8 +21,10 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+from puppeteer_code.assistant.activity import file_diff
 from puppeteer_code.assistant.permissions import ALLOW, REFUSE, classify_command, is_protected
 from puppeteer_code.integrity import is_test_path
+from puppeteer_code.sandbox import DirectRunner
 from puppeteer_code.tools import EditBlock, apply_block
 from puppeteer_code.workspace import IGNORE_DIRS, Workspace, scrubbed_env
 
@@ -72,16 +74,18 @@ ALL_TOOLS = list(SPECS)
 
 class Toolbox:
     def __init__(self, project: str | Path, on_event: Callable[[dict], None],
-                 approve: Callable[[dict], bool], mode: str = "ask"):
+                 approve: Callable[[dict], bool], mode: str = "ask", runner=None):
         self.root = Path(project).resolve()
         self.on_event = on_event
         self.approve = approve
         self.mode = mode
+        self.runner = runner or DirectRunner()
         self.safe_commands: list[str] = []      # filled in by the verifier
         self.scope = "any"                      # any | code | tests: what the current agent may edit
         self.touched: set[str] = set()
         self.servers: list[subprocess.Popen] = []
         self.commands = 0                   # agent commands that succeeded
+        self.diffs = False                  # report each change's lines, for the Live tab
 
     def specs(self, names: list[str]) -> list[dict]:
         return [SPECS[n] for n in names]
@@ -104,6 +108,8 @@ class Toolbox:
     def call(self, name: str, arguments: str, allowed: Optional[list[str]] = None) -> str:
         if name not in SPECS:
             return f"ERROR: unknown tool {name}"
+        if self.mode == "plan" and name not in READ_ONLY:   # whatever the agent's own list says
+            return f"ERROR: {name} is not available in plan mode"
         if allowed is not None and name not in allowed:     # a model can name a tool it was not offered
             return f"ERROR: {name} is not available in this step"
         try:
@@ -173,17 +179,25 @@ class Toolbox:
 
     # ── writing ──────────────────────────────────────────────────────────────
 
-    def _changed(self, path: Path, action: str) -> None:
+    def _old_text(self, path: Path) -> str:
+        if not self.diffs or not path.is_file():
+            return ""
+        return path.read_bytes().decode("utf-8", errors="replace")
+
+    def _changed(self, path: Path, action: str, before: str = "", after: str = "") -> None:
         rel = path.relative_to(self.root).as_posix()
         self.touched.add(rel)
         self.on_event({"type": "file_changed", "path": rel, "action": action})
+        if self.diffs:
+            self.on_event(file_diff(rel, action, before, after))
 
     def _write_file(self, path: str, content: str) -> str:
         target = self._editable(path)
         action = "edited" if target.exists() else "created"
+        before = self._old_text(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8", newline="")
-        self._changed(target, action)
+        self._changed(target, action, before, content)
         return f"wrote {path} ({len(content.splitlines())} lines)"
 
     def _edit_file(self, path: str, old: str, new: str) -> str:
@@ -196,15 +210,16 @@ class Toolbox:
         if updated is None:
             return f"ERROR: {note}. Read the file and copy the text exactly."
         target.write_text(updated.replace("\n", "\r\n") if crlf else updated, encoding="utf-8", newline="")
-        self._changed(target, "edited")
+        self._changed(target, "edited", raw, updated)
         return f"edited {path} ({note})"
 
     def _delete_file(self, path: str) -> str:
         target = self._editable(path)
         if not target.is_file():
             return f"ERROR: no such file: {path}"
+        before = self._old_text(target)
         target.unlink()
-        self._changed(target, "deleted")
+        self._changed(target, "deleted", before)
         return f"deleted {path}"
 
     # ── commands ─────────────────────────────────────────────────────────────
@@ -222,9 +237,9 @@ class Toolbox:
         env["PYTHONUNBUFFERED"] = "1"
         flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32" else {
             "start_new_session": True}
-        return subprocess.Popen(command, shell=True, cwd=self.root, env=env, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                encoding="utf-8", errors="replace", **flags)
+        return self.runner.popen(command, shell=True, cwd=self.root, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                 encoding="utf-8", errors="replace", **flags)
 
     @staticmethod
     def _kill(proc: subprocess.Popen) -> None:
@@ -255,6 +270,8 @@ class Toolbox:
             self._kill(proc)
             code = -1
             lines.append(f"\n(stopped after {timeout} seconds)\n")
+            if self.runner.contained and re.search(r"\b(node|npm|npx|jest|vitest)\b", command):
+                lines.append("(In Private, Node tools that start child processes can hang.)\n")
         reader.join(2)
         out = "".join(lines)
         if len(out) > MAX_OUTPUT:

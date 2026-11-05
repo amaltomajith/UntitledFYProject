@@ -38,8 +38,8 @@ here.
    `refs/` (the owner's private review material) is gitignored too, because it contains a key
    file. Never un-ignore it.
 3. **Results honesty.**
-   - `--provider sim` (simulated model) and `--provider oracle` runs test the mechanisms only.
-     They are **never** reported as results.
+   - `--provider sim` (simulated model) and `--provider oracle` runs test the mechanisms only. Both exist only on
+     `bench` and `train`. They are **never** reported as results.
    - Real numbers come from Groq or Nebius runs. Say how many tasks and seeds they cover.
    - Provider errors are excluded from aggregates and must be reported as such.
 4. **User files.**
@@ -83,7 +83,8 @@ The IDE and `pcode` also ask for a key on first run and save it to `~/.pcode/.en
   - FAST = `nvidia/Nemotron-3_5-Lightning` ($0.06 in, $0.24 out per 1M tokens)
   - QUALITY = `nvidia/nemotron-3-super-120b-a12b` ($0.30 in, $0.90 out per 1M tokens)
 - Groq models: FAST = `openai/gpt-oss-20b`, QUALITY = `openai/gpt-oss-120b`.
-- Override with `--fast-model` / `--quality-model`.
+- Override with `--fast-model` / `--quality-model`, which exist only on `bench`, `train` and `buildbench`.
+- **Private mode** is `provider: local` in `models.yaml`: no key, Ollama on `127.0.0.1:11435`, details in §6.
 - TLS: certificates are always verified (via `truststore`). On a proxy network, set
   `PUPPETEER_CA_BUNDLE=/path/ca.pem`.
 
@@ -102,6 +103,8 @@ puppeteer_code/assistant/  the coding assistant (details in §6)
 benchmarks/code_tasks/   build_tasks.py → tasks/ (PCodeBench-Mini, 37 tasks)
                          build_repo_tasks.py → tasks_repo/ (PCodeBench-Repo, 44 tasks)
 benchmarks/build_tasks/  build.py → tasks/ (PCodeBench-Build, 9 build-from-a-prompt tasks)
+benchmarks/reasoning/    the core's fair benchmark: GSM8K, GSM-Hard, MMLU-Pro, BBH (frozen tasks/,
+                         run.py, checkers, report.py → docs/BENCHMARKS.md)
 benchmarks/token_comparison.py, run_live_proof.py, results/   LEGACY, see §10
 tests/           test_agent.py (core) + test_code_*.py (Puppeteer-Code), all offline
 checkpoints/     pcode_linear_sim.json = LinearPolicy weights trained on SIM only;
@@ -109,9 +112,19 @@ checkpoints/     pcode_linear_sim.json = LinearPolicy weights trained on SIM onl
 runs/            benchmark/train outputs and the Groq response cache (gitignored, local only)
 ```
 
+Private mode: `puppeteer_code/privacy.py` (guard, wording), `ollama.py` (client, spawned server), `sandbox.py`
+(runners, probe, setup), `appcontainer.py` (launcher script), `assistant/effort.py`.
+
+Memory: `assistant/graph.py` (the store), `assistant/codemap.py` (parsing and sync), `web/components/ide/MemoryGraph.tsx`,
+`web/lib/graph.ts` (canvas drawing), `web/components/ide/SessionPicker.tsx` (the session drawer).
+
+Live view and folders: `assistant/activity.py` (live events), `web/components/ide/LiveView.tsx`, `FolderTabs.tsx`, `Workspaces` and
+`LocalGate` in `assistant/ide.py`.
+
 `web/` is the site (Next.js 16 static export, design rules in `web/DESIGN.md`): landing page in
-`app/(marketing)`, app pages in `app/(app)`, the IDE in `app/(ide)`, copy in `lib/content.ts`.
-`puppeteer_code/server.py` is the local server behind the IDE and the console.
+`app/(marketing)`, app pages in `app/(app)`, the IDE in `app/(ide)` and `components/ide/`, copy in
+`lib/content.ts`. `web/scripts/file-icons.mjs` regenerates the file logos. `puppeteer_code/server.py` is the
+local server behind the IDE and the console. Third-party attribution is in `NOTICE`.
 
 ## 6. How Puppeteer-Code works
 
@@ -150,7 +163,93 @@ Other parts:
   weights yet). The reward comes from verification, never a model's opinion.
 - `ide.py`: REST and WebSocket under `/api/ide/`. A per-launch token in the URL fragment protects it
   because it can run commands; `LocalOnly` also covers WebSockets. Fix mode runs through `RunManager`.
+  Slash commands are client-side and chat only (`web/components/ide/useCommands.ts`, list in
+  `web/lib/content.ts`). `/api/ide/search` uses the toolbox's grep, and `/api/ide/git` is read-only.
+- `terminals.py`: real shells for the IDE's bottom panel. `detect_shells()` finds PowerShell, pwsh, cmd, Git Bash and
+  WSL distros on Windows, and `/etc/shells` on Unix. Each `Terminal` has a PTY (pywinpty or ptyprocess), a reader
+  thread and a 1 MB ring buffer, so a reload reattaches; output pauses above 100 KB unacknowledged. `TerminalManager`
+  allows 8. Kill takes the whole process tree (psutil). Routes are `/api/ide/shells`, `/api/ide/terminals` and the
+  socket `/api/ide/terminals/{id}/ws`, which needs `LocalOnly` and the token in its first message.
+  **A terminal is the user's own shell: full user permissions, outside `permissions.py`, not a sandbox.** Keys are
+  dropped from its environment as hygiene, not as a boundary. Models never see its output.
 - `buildbench.py`: PCodeBench-Build. It scores with hidden tests the model never sees.
+
+### Modes and Private
+
+Three separate axes: permission (`plan | ask | auto`), effort (`fast | normal | think | deep`), Private.
+
+- **Plan mode.** `Toolbox.call` refuses everything outside `READ_ONLY`, whatever the agent's list says. A non-question
+  goes to `_draft_plan`, never into `_puppeteer`, so no checks run. The plan waits in `pending_plan`. Only the user can
+  run it: `/approve`, `POST /api/ide/plan/approve`, `session.approve_plan()`. No tool reaches these. A new request
+  replaces a waiting plan. Fix mode and Apply are refused in plan mode.
+- **Effort** (`effort.py`). `normal` on a cloud provider sends exactly what it did before, so benchmarks stay
+  comparable. Models with native thinking get `think` per agent. An experimental reasoning pass runs at `think` on
+  models without it and at `deep` on all models, with notes added to the task and never saved. Whether it helps is
+  unmeasured.
+- **Private** is an explicit choice: `--private`, the IDE toggle or `/private`. It is remembered in
+  `~/.pcode/projects/<hash>/settings.json`, outside the repo, so a repo cannot flip it. It never falls back to cloud.
+  - `privacy.py` checks run inside `OllamaClient.chat()`, so `/model` cannot get round them. Cloud names are refused
+    first, by name, because `/api/show` on one is proxied to ollama.com.
+  - `ollama.py` uses `http.client`, which cannot follow a redirect or read a proxy. It starts its own `ollama serve`
+    on 11435 with `OLLAMA_NO_CLOUD=1`, and refuses a server that does not return 403 for a cloud name. It never pulls.
+  - Off in Private: the response cache, quota fallback, Tavily, `_pydoc` imports, Explorer and `start_server`. So
+    Preview is off, and `/preview` and `/private` say so (Phase 7 decision: the pipe relay was not built). Limits come
+    from the spec: 150,000 tokens, 1,800 s. The Responder is off too: code writes the reply (`_report`).
+  - A private conversation cannot be continued by a cloud session.
+- **The OS block** (`sandbox.py`, `appcontainer.py`). A no-capability AppContainer. `python -I appcontainer.py -- <line>`
+  stays outside, starts the command inside and exits with its code, so pipes and `taskkill /T` work as usual.
+  `pcode private-setup` creates the profile, grants narrow read access to the Python runtime and copies Node; `--remove`
+  undoes it (project grants on NTFS stay). Nothing is "contained" until the probe passes, and it runs before each request:
+  container token, error 10013 on TCP, nothing arriving at a loopback or LAN canary, with an outside UDP send as control.
+  A failure emits a notice and turns Auto off.
+  - **Allowed claim:** "Model on this computer. Commands have no network." **Never say "no data leaves".** Outside the
+    block: the user's terminals and `!commands`, hooks a command leaves behind, code run later, and the tray app's
+    update check. `permissions.py` is still not a sandbox.
+  - **It stops sending, not reading.** On exFAT a command can read and delete the whole drive, `.env` and `refs/` included.
+    The UI says so.
+
+### Live view and folder tabs
+
+- **Long replies.** `reply_tokens` (10,000, local only) is Builder, Debugger and TestWriter's limit. A reply cut off at the limit is
+  marked `cut_off`: it gets a "smaller step" retry, and after `MAX_CUT_OFFS` (2) the request stops with a plain reason.
+- **Live events** are on only with `AssistantSession(live=True)`, which the IDE sets, so benchmarks send what they always sent.
+  `Activity` ticks every 0.25 s for the whole request and reports each second: `activity` (agent, phase, seconds, silence, rate),
+  `thinking_delta`, `code_delta` (latest 4 KB, never for a protected path). Those three are transient: `publish(event, keep=False)`
+  does not store or number them. `file_diff` is stored, capped at 8 KB.
+- **What streams.** Cloud models stream tool calls as they are written (`_stream_tools` in `core/agent.py`). **Ollama holds a tool
+  call back until the reply ends**, so in Private the code appears per reply. Thinking, phase and time stay live, and the tab says so.
+- **Wording stays true.** Quiet is "No output for 1m 20s. The model may still be working.", never "stuck". A pending approval says
+  "Waiting for your answer in the chat", and the folder tab says "Needs you".
+- **Folder tabs.** `Workspaces` holds one `IdeHub` per open folder, at most 6, with one token. `x-pcode-workspace` names the hub, and
+  WebSockets name it in their signed first message. A client that names none gets the first hub; a wrong id is 404 or close 4405.
+  `LocalGate` lets one Private request run across all folders. A waiting one says what it waits for and can be stopped. Cloud folders
+  do not wait. Close is refused during a request.
+- **Saved tabs.** `~/.pcode/ide-workspaces.json` holds paths only, outside any repo. After a restart they are dim tabs until clicked,
+  so no model starts. Only a missing folder is dropped: a refusal such as no key keeps it.
+- **Frontend.** `IdeClient = { token, workspace }` replaces `token`. Each open folder stays mounted and hidden with `visibility: hidden`.
+  `terminal/store.ts` keeps one config per folder, and `disposeAll(workspace)` touches only that folder. A hidden folder starts no
+  shell until first shown.
+
+### Sessions and memory
+
+- **Sessions** are JSON in `~/.pcode/sessions/<id>.json`, with `title` and per-turn results in `turns`. `_load` takes plain
+  ids only, from this project only, and Private and cloud refuse each other. `list_sessions(project, home, private)` is
+  filtered by mode. Rename and delete return 409 while busy. Deleting removes the JSON and its episodes; files stay.
+- **Memory** is off in the constructor (`AssistantSession(memory=False)`), so benchmarks stay byte-identical. The IDE and
+  `pcode` turn it on, as does `buildbench --memory`. A database error turns it off for that request and never fails one.
+- **Storage:** `graph-private.db` and `graph-cloud.db` in `~/.pcode/projects/<hash>/`, SQLite with FTS5. Nodes are session,
+  episode, file, symbol. Edges are `IN_SESSION`, `MODIFIED`, `DEFINES`, `IMPORTS`, `CALLS`. **No source code is stored.**
+- **Parsing:** Python with `ast`, JS and TS with Tree-sitter, nothing else gets symbols. Project code is never executed.
+  `CALLS` is by name, written only when the name is unique and not in `COMMON_NAMES`: a missing edge beats a wrong one.
+- **Sync** compares `indexed_sha` through `snapshots.changed_since`, so outside edits are caught. The full index uses
+  `snapshots.tracked()`, so the project's `.gitignore` applies.
+- **Episodes hold code-observed facts only:** the user's words, agents, check result, changed files, SHAs. Never a model's
+  summary. Undo removes the episode, or keeps it with only the files that were kept.
+- **Prompts:** `_memory_block` adds at most `MEMORY_CHARS` 1,800, labelled as data. `fold` shortens only reads made stale by
+  an edit or repeated later.
+- **Tokens Saved is a net estimate**, labelled "About". It is never a result, and `export-web` and reports never use it.
+- **View:** `d3-force` on `<canvas>`, default 300 nodes, shapes and labels as well as colour, a keyboard list beside the
+  canvas. Routes: `GET /api/ide/graph`, `GET /api/ide/graph/node/{id}`. `graph_delta` tells the view to refetch.
 
 ### Fix mode (`pcode fix`)
 
@@ -209,9 +308,13 @@ matching. An agent gets one repair turn if a block does not match.
 
 ```bash
 pcode                                             # chat in the current folder (python -m puppeteer_code)
-pcode --folder PATH --mode auto                   # --mode ask (default) | auto; --resume continues
+pcode --folder PATH --mode auto                   # --mode ask (default) | auto; --resume ID, or /resume in chat
 pcode ide --folder PATH                           # browser IDE; build the site first (below)
 cd web && npm ci && npm run build                 # needed once, and after any web change
+pcode --private                                   # Private: Ollama on this computer, no key
+pcode private-setup                               # network block for commands (Windows, no admin); --remove undoes it
+pcode --mode plan --effort think                  # also on `pcode ide`; in chat: /approve /effort /think /private
+python -m puppeteer_code buildbench --memory ...  # memory on for a benchmark; off by default
 
 pytest tests -q                                   # all offline (MCP tests skip without `mcp`)
 pytest tests/test_code_bench.py -q                # faster subset
@@ -235,6 +338,10 @@ python benchmarks/build_tasks/build.py --check             # rebuild + prove the
 python -m puppeteer_code buildbench --provider groq --cache runs/cache/build --methods heuristic,direct \
   --out runs/buildbench-groq.json
 
+# Reasoning benchmark for the thesis core (core.Orchestrator vs direct, cot, fixed); details in docs/BENCHMARKS.md
+python benchmarks/reasoning/datasets.py --check             # verify the 224 frozen tasks
+python -m benchmarks.reasoning.run --cache runs/cache/reasoning --out runs/reasoning-nebius-lightning.json --resume
+
 python -m puppeteer_code train --provider sim --episodes 200   # mechanism check only
 python -m puppeteer_code report --bench runs/<bench>.json --curve runs/<train>.json
 python -m puppeteer_code mcp      # MCP server; register: claude mcp add puppeteer-code -- python -m puppeteer_code mcp
@@ -246,7 +353,144 @@ python -m puppeteer_code export-web   # real results to web/public/data; refuses
   `--weights checkpoints/pcode_linear_sim.json` until a real-model training run produces one.
 - `--seeds N` is a count, not a list.
 
-## 8. Status (2026-10-31)
+## 8. Status (2026-11-05)
+
+**Reasoning benchmark for the thesis core, 2026-11-05.** `benchmarks/reasoning/`, write-up in `docs/BENCHMARKS.md`.
+- Runs `core.Orchestrator` unchanged against `direct`, `cot` and `fixed` (Planner, Reasoning, Critic, Concluder) on 224
+  frozen tasks: GSM8K 50, GSM-Hard 50, MMLU-Pro 70, BBH 54. Nebius, `nvidia/Nemotron-3_5-Lightning`, one seed.
+- **Thinking is off for every call** (`enable_thinking=false`). With it on, hidden reasoning used up the caps and the
+  policy's reply became a paragraph, so the engine fell back to its first agent. Recorded in the run's `config`.
+- `CountingClient` counts the policy's calls, which `EpisodeResult.total_tokens` leaves out. Every reply is stored, so
+  `--rescore` recomputes scores after a checker fix without new calls.
+- Smoke checks caught, before the result run: a CoT instruction in the system turn only was ignored (3-token
+  replies), so one-call methods repeat it in the user turn; Unicode minus; bare-letter replies; GSM tolerance.
+- GAIA (gated, needs tools) and ToolBench (RapidAPI, GPT-4 judge, tools) were **not run**, and the page says why.
+- **The full run (`runs/reasoning-nebius-lightning.json`) was still going when this was written.** Partial numbers on
+  the tasks so far: puppeteer about 91% and fixed about 87% (not significant, McNemar p 0.25), CoT about 56%, direct
+  about 16%; puppeteer about 4,100 tokens per task against about 2,500 for fixed. Final numbers: `docs/BENCHMARKS.md`.
+- Site: the Benchmarks page now has Reasoning, Build (the Nebius runs, missing before) and Fix groups; the old lead
+  ("every method fixed every bug") and "cost pending" were wrong for Build and are gone. `export-web` writes
+  `build.json` and `reasoning.json` and skips smoke runs. 52 new offline tests.
+
+
+**Stuck local run, Live tab, folder tabs, 2026-11-01 (branch `ide-terminal-redesign`, uncommitted).** All plan phases are written.
+- **Tests:** `pytest tests -q`: 777 passed, 2 skipped, 5:48. `npx tsc --noEmit` clean, site built. The last Python edit came before
+  that run; only the frontend changed after it.
+- **Scripted requests with live off** were compared byte for byte with `HEAD` (11 requests): identical.
+- **The owner's 26-minute run:** `~/.pcode/ollama-private.log` shows 8 calls of exactly 3m40s, then a 500 at Stop, and `index.html`
+  untouched. Builder's 6,000-token limit at about 27 tok/s is 3m40s, and a reply cut off there was retried as "malformed". This is
+  the likely cause, consistent with the evidence, and not separately proved.
+- **The same request on a copy, `qwen3.5:9b`, one run each, demos, never results:** with the cut-off fix, 278 s, 74,353 tokens, code
+  written, then stopped by the repeat guard, because re-reading a file it had just changed counted as repeating. With that fixed
+  too, 263 s, 36,106 tokens, status done, no cut-offs, scientific code present. There are no tests in that folder, so it reports unverified.
+- **Repeat guard change affects cloud too:** a successful write now clears it. This can change rare cloud runs. `reply_tokens` does not.
+- **Gate result:** Ollama sent 106 thinking chunks, 46.5 s of silence, then the whole 4,557-character call. The model ignored a
+  "plain file block" instruction, and `<tool_call>` text with no `tools` gave `{"error":"EOF"}`, so text tool calls were not adopted.
+  `qwen2.5-coder:7b` writes calls as text and might stream; untested. Thinking did not need limiting.
+- **Deviations from the plan:** the ticker runs for the whole request, not per call. A missing workspace header means the first hub,
+  not a refusal, so existing clients work. Close is disabled during a request instead of asking inline.
+- **Real Nebius check, one request, a smoke test, never a result:** 2,658 tokens, 3 s, `code_delta` arrived, usage reported, file
+  written. So `_stream_tools` works on Nebius. **Groq was not run through it.**
+- **Real local model in a headless browser, two small requests, demos:** both edited the file. Phases, thinking and rate updated
+  live. That run found four flaws, now fixed: the tab opened only at the first writing agent; "Code appears..." showed during
+  Planning; the rate kept decaying during a command; and a pending approval read as "working on".
+- **Verified in a headless browser with a scripted model (never a result):** Live through a request, reload mid-run, Stop, a failed
+  check, reduced motion, an approval waiting, two folders with a run in the hidden one, tab clears when it ends, Esc in another folder
+  leaves the run alone, intact terminals on return, same-name tabs, arrow keys, unsaved prompt, a folder held by another tab refused,
+  Private queue and stopping a wait, restart with saved tabs and no provider made, closing the last folder, phone width.
+- **Bugs that browser run found, now fixed:** repeated panel group ids threw "No layout data found" once a second folder mounted;
+  repeated `ide-input` ids pointed a folder's label at another folder's box; hidden folders started shells.
+- **Offline only:** a saved folder surviving a refusal, shutdown reaching every folder, Private and cloud sessions kept apart.
+- **Not run:** a cloud folder beside a Private one in a browser, six folders at once, the Memory Graph's pause in a hidden tab, many
+  terminals past the browser's WebGL limit (xterm falls back to its DOM renderer, by design, untested here), and speed with a real GPU.
+- The terminal chat (`pcode`) has no live view. That was out of scope.
+- **The owner's running IDE has the old code.** Restart it to get any of this.
+
+**Sessions and memory graph, 2026-10-31 (branch `ide-terminal-redesign`, uncommitted).** All plan phases are written.
+- **Tests:** `pytest tests -q`: 722 passed, 2 skipped, 5:38. This ran after every code change below.
+- **Scripted requests with memory off** were compared byte for byte with `HEAD` (11 requests): identical.
+- **Changed from the plan:** indexing uses the shadow git's tracked files, not `Toolbox._walk`. Generated folders and
+  minified bundles have no symbols. Folded reads list symbols parsed from the folded text, so their line numbers are right.
+  `graph_delta` tells the view to refetch rather than carrying nodes.
+- **First index of this repo:** 11.8 s, 1,727 files, 8,233 symbols, 11 MB. No change: 0.1 s.
+- **Verified in a headless browser, a demo, never a result:** nodes arrive, reload keeps the session, scope, search and type
+  filters, a symbol opens with its range selected, jump to turn, Undo removes nodes and code, new session, rename, switch, Esc
+  closes the drawer, delete of the active session keeps code, reduced motion, keyboard selection, empty state, phone width with
+  no overflow.
+- **Verified on the API:** toggling Private off gives Nebius, an empty graph and no sessions; on returns the private graph
+  intact; nothing reached `graph-cloud.db`.
+- **Bugs that browser run found, now fixed:** Esc with focus on the toggle; a 503 on a new session's graph with type filters;
+  `--private` left the provider `local` after toggling off.
+- **Memory on against off, one two-turn task on `qwen3.5:9b`, one run each. A demo, never a result:** both finished both turns
+  with tests passing. Tokens on, 3,809 then 5,642 (9,451); off, 5,263 then 4,197 (9,460). This shows **no saving**, and the
+  follow-up was easy enough without memory. "About 0 tokens saved" in both. The off run's first turn includes a command the
+  script declined. The script used a throwaway home, so the block was not set up: `auto` became `ask` and checks ran uncontained.
+- **Folding is modest by design:** it has shown 0 in every demo so far.
+- **Final graph layout checked in a browser on 8 nodes:** an unlinked session stays near the rest, labels readable, no errors.
+- **Built but not rechecked in a browser:** clearing the inspector when Undo removes the selected node.
+- A project shows an empty graph until its first request, because indexing runs at request start.
+- **Not run:** a real request on a big repo, so speed at 300 live nodes is unmeasured.
+- Left on disk, delete by hand: `F:\tmp\pcode-graph`, `F:\tmp\pcode-live`, `F:\tmp\pcode-onoff-on`, `F:\tmp\pcode-onoff-off`.
+
+**Private mode and modes, 2026-10-31 (branch `ide-terminal-redesign`, uncommitted).** Phases 1 to 7 are built and work on
+a real local model. One small task, repeated: a working demo, never a benchmark result.
+- **Real model, `qwen3.5:9b`:** in the terminal and in a headless browser on a throwaway folder: plan, approve, command
+  approval, tests passing inside the container, Undo (also after `/resume`), the toggle both ways, `/private`, `/preview`.
+  About 90 s and 13k to 19k tokens each run; 5.6 of 6.7 GB on the GPU at `num_ctx` 16384.
+- **The model's own reply was false, so Private no longer uses it.** It twice said `stats_lite.py` was not created when
+  it was, the second time with the changed-file list in its prompt. `_report` now writes Private's reply from the snapshot
+  and the checks, so it is plain. Cloud replies are unchanged.
+- **Fixed: a killed `pcode` left Private's server running**, and the next start joined it. It is now tied to pcode by a
+  kill-on-close job. Proved by force-killing the IDE: port 11435 closed. Unix still relies on `atexit`.
+- **Verified on this machine:** `pcode private-setup` (exit 0, rerun after the probe fix); the egress matrix through the
+  real runner (below); pytest with `tmp_path` and `node --test` inside the container on `F:`; kill of the tree. Against a
+  fake Ollama: client, guard, plan, effort.
+- **Egress matrix, real runner:** blocked TCP, UDP (a public DNS query got a reply outside and none inside), ICMP, DNS,
+  LAN HTTP, loopback, 11434, SMB, WebDAV, BITS, certutil, schtasks, WMI, wsl.exe. `explorer` launched and the listener saw
+  no hit. `nslookup` exits 0 with no server. 8765 was tested afterwards: connected from outside, timed out inside.
+- **Not proved:** a `pktmon` capture at the NIC (needs admin), issue-2207 binaries, Docker (pipe absent), IPv6 (none here,
+  so it fails in both), and `ollama serve` making no outbound connection. A watcher sampled that server every 3 s through
+  one real run and saw no non-loopback connection; that is a sample, not proof.
+- **Not run:** Go, cargo and dotnet in the container; `think` and `deep` effort on the real model; Fix mode in Private.
+- `qwen3.5:9b` is the default because it is first in `models.yaml` and worked; no other model was run through a whole
+  request. Single calls at `num_ctx` 8192, not results: granite4 native tool calls, 10.6 tok/s; qwen2.5-coder:7b tool calls
+  as text (handled), 51 tok/s; qwen3:8b used all 200 tokens thinking.
+- `qwen3.5:9b` retries a declined command once despite being told not to, and writes `cd /f/tmp/...` (Git Bash style) for a
+  Windows shell. A human still decides each one in `ask` mode.
+- **Limits:** Node tools that spawn children with pipes hang in a container (`node --test` is adapted; jest and vitest are
+  not). **On NTFS, pytest cannot start**, because the container cannot stat parent folders; the UI warns. The fix is a
+  read-attributes grant on the parents, such as `C:\Users\<name>`, which changes the home folder's ACL, so it waits for
+  the owner. AppContainer was kept despite the plan's Node gate, because the fallback needs admin and likely leaks DNS (untested).
+- Numbers on local models need the owner's wording first, since §2.3 names only Groq and Nebius.
+- Mistake to know about: `tests/test_code_sandbox.py` was overwritten and restored from `HEAD`. It had no uncommitted
+  work. The runner tests moved to `tests/test_code_runner.py`.
+- Left on disk: `F:\tmp\pcode-spike` (delete by hand), and `F:\.pcode-tmp` (Private's temp folder; it holds empty
+  pytest folders from the live tests and is safe to delete).
+
+**IDE redesign, 2026-10-31 (branch `ide-terminal-redesign`, uncommitted until asked).** Two passes, the second
+modelled on Antigravity at the owner's request. Design rules are in `web/DESIGN.md`.
+- Near-black with slight violet from the landing page (the first pass's amber is gone), Geist for the workbench.
+- Activity bar (Explorer, Search, Source Control read-only, Testing), status bar, file logos, and sashes on every panel.
+- Real terminals: `+` and a shell menu, split, rename, a tab rail, drag to reorder, split or dock in the editor.
+  Slash commands left the terminal for this reason.
+- Agent panel: rounded bubbles and prompt card. The model name there is plain text. **The picker and the AI part
+  wait for the owner's novelty plan, by their decision.**
+- Left out on purpose: Run and Extensions icons, Problems, Debug and Ports tabs, `+` in the prompt, because nothing
+  would feed them. Dragging is what the owner chose: not free docking of every panel.
+- Verified in a real browser with a scripted model on a throwaway folder (never a result): PowerShell, cmd, Git Bash and
+  WSL Ubuntu start in a path with spaces; colours; resize; vim in WSL; a `yes` flood then Ctrl+C; reload keeps shells and
+  scrollback; every drag; killing a terminal leaves no process, in Windows or in WSL.
+- **Not tested:** pwsh (not on this machine), macOS, a native Linux machine. Linux detection is covered by fakes.
+- The `yes` flood recovered after a couple of seconds in headless software rendering. Real-GPU speed is unmeasured.
+- 22 slash commands in the chat, listed by `/help`. 14 run locally and spend no
+  tokens; 8 are premade requests to the assistant (`/explain`, `/review`, `/design`, `/tests`, `/bugs`,
+  `/refactor`, `/docs`, `/run`). `!command` in the chat runs a shell command, shown in the Output tab.
+- New routes: `POST /api/ide/clear` and `/api/ide/model`. `/api/ide/resume` now publishes `resumed`.
+- `AssistantSession.clear()` gives a new id, so `/clear` no longer overwrites the old conversation (this
+  also changes `pcode`'s `/clear`). The terminal chat (`pcode`) did not get the premade requests.
+- Fixed: CRLF files showed "(unsaved)" on open, and saving kept LF only.
+- Verified in a real browser with a scripted model on a throwaway folder (never a result). `/review` and
+  `/explain` are read-only only because their wording passes `is_question`, so keep that if you edit them.
 
 **The assistant, built 2026-10-30 (uncommitted).** The product is now a general coding assistant:
 terminal chat (`pcode`) and browser IDE (`pcode ide`), with Fix mode inside the IDE.
@@ -309,7 +553,7 @@ Deploy with `vercel deploy --prod` from `web/out`; a build deletes the link in `
   - PCodeBench-Repo: 44 tasks in one shared repo, including 7 cross-module `repo_x_*` bugs
     whose only visible failure is in `test_report.py`.
 - Baselines: single-shot, react, react-tools.
-- Offline test suite green (last full run, 2026-10-31: 362 passed, 2 skipped, ~5 min).
+- Offline test suite green (last full run, 2026-11-01: 777 passed, 2 skipped, ~6 min).
 
 **Real results so far** (Groq gpt-oss, seed 0). Details are in README §14.4 and `runs/*.json`.
 - Mini test split (10 tasks): every method succeeds on every task. Tokens per task:
@@ -375,7 +619,25 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
   maps them. No deployment exists yet.
 - `runs/fix-20261030-183525.json` and `-183746.json` are real failed runs (Groq 429). They are not results.
 
-## 9. Next steps (in order, updated 2026-10-31)
+## 9. Next steps (in order, updated 2026-11-05)
+
+First, if `docs/BENCHMARKS.md` says `PARTIAL`, finish the reasoning run with `--resume`, then regenerate the doc
+(`python -m benchmarks.reasoning.report --write docs/BENCHMARKS.md ...`, full command in that file §3.8), rerun
+`pcode export-web`, build and redeploy. Then: 3 seeds, thinking on, `nemotron-3-super-120b-a12b`.
+
+
+First, restart `pcode ide` so it runs the new code, and rerun the scientific calculator request on the real folder.
+
+First, sessions and memory: nothing yet shows memory saves tokens. A real claim needs a paired `buildbench --memory` run on new
+multi-turn tasks, which spends credit. The 9 existing tasks are single requests, so those tasks have to be written first.
+
+First, finish Private, with memory free (close Chrome), one at a time:
+1. Decide on the NTFS parent-folder grant: until then pytest cannot run in a Private project on `C:`.
+2. Capture one real request with `pktmon` as admin, to prove what the watcher only sampled.
+3. Try `think` and `deep` on the real model, and run another model through a whole request.
+
+Then, by the owner's request: the model picker and AI part of the agent panel (Groq, Nebius and others). The owner
+has their own plan to make it novel, so ask them for it before building anything.
 
 0. **Reduce the tool-loop prompt cost**, the biggest measured cost (README §14.7).
 1. **Rerun PCodeBench-Build on fresh tasks with more seeds**, so the result is a real test set:
@@ -436,6 +698,17 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
 
 ## 11. Gotchas (learned the hard way)
 
+- **Every panel `Group` id must be unique on the page, and that includes hidden folders.** A repeat throws "No layout data found for
+  index 0" from a `ResizeObserver`. The same goes for `htmlFor` ids, so use `useId`. Panel ids inside a group may repeat.
+- **Never `display: none` a folder.** The panels read size 0 as collapsed, and xterm cannot measure. Use `visibility: hidden`.
+- **Anything on `window` needs the `active` or `shown` prop.** Every folder stays mounted, so a hidden one would answer Esc or Ctrl+backtick.
+- **Do not read a tool call's text from Ollama while it generates.** It is not sent. Silence during a reply is normal there.
+- **A live run stuck on "working" may be an unanswered approval.** It waits forever by design, so a script must answer it.
+- **A demo that deletes its folders needs its old server stopped first**, or that server reports "not a git repository".
+
+- **`_approve` has no timeout, by design.** A script that drives `session.send` must answer `approval_request`, or it hangs
+  forever with no CPU and no output. One did for 45 minutes. A scripted `home` also has no `private.json`, so `auto` becomes `ask`.
+- **`scrub` only hides values in this process's environment.** A pasted key is not one, so `graph.clean` also matches key shapes.
 - **Windows subprocesses.** Every `subprocess.run` passes `stdin=subprocess.DEVNULL`. Without
   it, git and pytest inherit the MCP server's stdin pipe and hang. Keep this in new code.
 - **Console encoding.** The CLI reconfigures stdout to UTF-8 because rich crashed on cp1252
@@ -465,3 +738,23 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
   git sets `* -text -filter -ident` in `info/attributes`.
 - **`lstrip("./")`** turns `.env` into `env`. `is_protected` uses a regex for this reason.
 - **`web/out` is gitignored**, so a fresh clone needs Node to build the site.
+- **Ctrl+C in a Windows terminal.** A process started in the background passes "ignore Ctrl+C" to its children, so
+  `ping -t` could not be stopped under ConPTY. `WindowsPty` clears the flag before each spawn. Linux shells in WSL hide
+  this bug, because their tty handles Ctrl+C itself, so always test it in cmd or PowerShell.
+- **`os.environ` keys are upper case on Windows**: `ProgramFiles` is `PROGRAMFILES`. `windows_shells` normalises them.
+- **A dragged element that a drop removes never fires `dragend`.** `useTerminals` listens on `window` for that reason.
+- **Restart the IDE after changing `terminals.py`.** `web/out` covers only the frontend.
+- **Look before writing a "new" test file.** Check `git ls-files` first.
+- **A UDP `sendto` succeeds in an AppContainer**, and the packet goes nowhere. Only arrival counts, so the probe uses a
+  listener plus a control send from outside.
+- **Python 3.13 temp folders on NTFS** are owner-only, and a container cannot open them. On exFAT `TMPDIR` points at
+  `<drive>\.pcode-tmp`. An AppContainer overrides `TEMP` and `TMP`, but not `TMPDIR`.
+- **Node from `Program Files` cannot run in a container**, which is why setup copies it. `NODE_OPTIONS` carries
+  `--preserve-symlinks`, because Node stats `C:\`.
+- **`node --test` hangs in a container** (libuv's named pipes are refused), so `adapt()` adds `--experimental-test-isolation=none`.
+- **Bash heredocs here** failed on text with apostrophes. Use the Write tool for scripts.
+- **Git Bash rewrites a leading `/`** in arguments: `/private` reached the chat as `C:/Program Files/Git/private`, and the
+  agent treated it as a real request. Set `MSYS_NO_PATHCONV=1` before scripting slash commands.
+- **A model can reject a true fact in its prompt.** If a claim matters, code writes it.
+- **`pcode ide` buffers its first line when redirected.** Set `PYTHONUNBUFFERED=1`, or an empty log looks like a dead IDE.
+- **On Windows a venv's `python.exe` is a launcher.** Killing it can leave the real process, so kill the port's owner.

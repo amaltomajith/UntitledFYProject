@@ -190,13 +190,13 @@ class DocsSearchAgent(CodeAgent):
 
         notes: list[str] = []
         source = "pydoc"
-        if os.environ.get("TAVILY_API_KEY"):
+        if os.environ.get("TAVILY_API_KEY") and not self.session.private:
             try:
                 notes = self._tavily(query)
                 source = "tavily"
             except Exception as e:
                 logger.warning("Tavily search failed: %s", e)
-        if not notes:
+        if not notes and not self.session.private:      # pydoc imports modules, outside any sandbox
             notes = self._pydoc(query_bits)
         if notes:
             st.docs_notes.extend(notes)

@@ -1,85 +1,85 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
+import { useEffect, useRef } from "react";
 import { IDE } from "@/lib/content";
 import type { View } from "@/lib/ide";
+import { Codicon } from "./Codicon";
+import { TerminalActions, TerminalArea } from "./terminal/TerminalPanel";
+import type { Terminals } from "./terminal/useTerminals";
+
+export type BottomTab = "terminal" | "output";
 
 type Props = {
   view: View;
+  terminals: Terminals;
+  tab: BottomTab;
+  onTab: (tab: BottomTab) => void;
   error: string | null;
-  onCommand: (command: string) => void;
+  prompt: string;
+  maximised: boolean;
+  onMaximise: () => void;
+  onClose: () => void;
 };
 
-export function BottomPanel({ view, error, onCommand }: Props) {
-  const [tab, setTab] = useState<"terminal" | "checks">("terminal");
-  const [command, setCommand] = useState("");
+function Output({ view, error, prompt }: Pick<Props, "view" | "error" | "prompt">) {
   const log = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight;
-  }, [view.terminal, tab]);
+  }, [view.terminal]);
 
   return (
+    <div className="ide-term">
+      <pre ref={log} tabIndex={0} aria-label={IDE.bottom.outputLabel}>
+        {view.terminal.length ? null : <span data-kind="sys">{IDE.bottom.noOutput}</span>}
+        {view.terminal.map((line, i) =>
+          line.kind === "cmd" ? (
+            <span key={i}>
+              <span data-kind="prompt">{prompt}</span> {line.text}
+            </span>
+          ) : (
+            <span key={i} data-kind={line.kind}>
+              {line.text}
+            </span>
+          ),
+        )}
+      </pre>
+      {error ? (
+        <p className="ide-term__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function BottomPanel({ view, terminals, tab, onTab, error, prompt, maximised, onMaximise, onClose }: Props) {
+  return (
     <section className="ide-bottom" aria-label={IDE.bottom.label}>
-      <div className="ide-tabs" role="tablist">
-        {(["terminal", "checks"] as const).map((name) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            aria-selected={tab === name}
-            className="ide-tab"
-            onClick={() => setTab(name)}
-          >
-            {IDE.bottom[name]}
-          </button>
-        ))}
-      </div>
-      {tab === "terminal" ? (
-        <div className="ide-term">
-          <pre ref={log} tabIndex={0} aria-label={IDE.bottom.output}>
-            {view.terminal.join("") || IDE.bottom.empty}
-          </pre>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!command.trim() || view.busy) return;
-              onCommand(command.trim());
-              setCommand("");
-            }}
-          >
-            <span aria-hidden="true">$</span>
-            <label htmlFor="ide-command" className="sr-only">
-              {IDE.bottom.commandLabel}
-            </label>
-            <input
-              id="ide-command"
-              value={command}
-              spellCheck={false}
-              autoComplete="off"
-              disabled={view.busy}
-              placeholder={view.busy ? IDE.bottom.busy : IDE.bottom.placeholder}
-              onChange={(e) => setCommand(e.target.value)}
-            />
-          </form>
-          {error ? (
-            <p className="ide-term__error" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
-      ) : (
-        <ul className="ide-checks">
-          {view.checks.length === 0 ? <li className="muted">{IDE.bottom.noChecks}</li> : null}
-          {view.checks.map((check, i) => (
-            <li key={i} data-ok={check.ok}>
-              {check.ok ? <CheckCircle size={14} aria-hidden="true" /> : <WarningCircle size={14} aria-hidden="true" />}
-              {check.summary}
-            </li>
+      <div className="ide-bottom__bar">
+        <div role="tablist" className="ide-bottom__tabs">
+          {(["terminal", "output"] as const).map((name) => (
+            <button key={name} type="button" role="tab" aria-selected={tab === name} onClick={() => onTab(name)}>
+              {IDE.bottom[name]}
+            </button>
           ))}
-        </ul>
-      )}
+        </div>
+        <span className="ide__spacer" />
+        {tab === "terminal" ? <TerminalActions t={terminals} /> : null}
+        <button
+          type="button"
+          className="ide-bottom__tool"
+          aria-label={maximised ? IDE.bottom.restore : IDE.bottom.maximise}
+          title={maximised ? IDE.bottom.restore : IDE.bottom.maximise}
+          onClick={onMaximise}
+        >
+          <Codicon name={maximised ? "chevron-down" : "chevron-up"} />
+        </button>
+        <button type="button" className="ide-bottom__tool" aria-label={IDE.bottom.close} title={IDE.bottom.close} onClick={onClose}>
+          <Codicon name="close" />
+        </button>
+      </div>
+      {tab === "terminal" ? <TerminalArea t={terminals} /> : <Output view={view} error={error} prompt={prompt} />}
     </section>
   );
 }

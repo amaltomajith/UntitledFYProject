@@ -8,6 +8,14 @@ right, scroll-driven chapters. Inspired by the motion language of puture.co.kr, 
 icons, colour and layout. The accent is a royal purple-blue, more violet than the reference's blue.
 One tile per real agent in `puppeteer_code/agents.py`.
 
+## Memory Graph (`components/ide/MemoryGraph.tsx`, `lib/graph.ts`)
+
+`d3-force` on a `<canvas>`, because SVG does not hold 300 live nodes. Kinds differ by shape, label and colour
+(`--graph-*` tokens, never colour alone): session hexagon, episode diamond, file square, symbol circle. A failed episode
+uses `--graph-bad`, and the inspector states its result in words. The list beside the canvas is the keyboard and screen
+reader route to every node, the same rule as a chart with a table behind it. With reduced motion the layout settles first
+and draws one frame. "About N tokens saved" stays worded as an estimate, with its method in the tooltip.
+
 ## Tokens (`app/globals.css`, `:root`)
 
 | Token | Value | Use |
@@ -56,10 +64,40 @@ Scene colours mirror these by hand: `BODY` and the face gradient in `AgentTiles.
 
 ## IDE (`app/(ide)/ide`, `components/ide/`)
 
-- Route group `app/(ide)` has no `AppShell`: it is a full-height workspace with a file tree, editor tabs,
-  a bottom panel and the chat. State lives in `lib/ide.ts` (`applyEvent` reduces the shared event stream).
+- Route group `app/(ide)` has no `AppShell`: it is a full-height workbench with an activity bar, side views,
+  editor tabs, a bottom panel and the agent chat. State lives in `lib/ide.ts` (`applyEvent` reduces the
+  shared event stream). The layout is nested `react-resizable-panels` groups, saved in localStorage.
 - All classes start with `ide`, in the "ide" section of `globals.css`.
-- The chat speaks to a non-programmer: plain progress first, agent names only under "Show details".
+- **The IDE is near-black with slight violet, matching the landing page, by the owner's decision.** `.ide` and
+  `.ide-setup` redefine the neutrals (`--bg`, `--ink*`, `--line`, `--well`), so every other page is unchanged.
+  The accent tokens come from `:root`. Violet is sparing: primary buttons, focus ring, activity marker, active
+  tab line, changed-file and unsaved marks, inline code, warnings (which keep their glyph and words).
+  `--select` is the selection tint. Syntax colours are `--syn-*`. Never write a colour in an `ide` rule; add a
+  token. ANSI colours in `terminal/store.ts` are the exception: programs give them a meaning, so yellow stays yellow.
+- Type: Geist for the workbench and chat, as on the landing page. Geist Mono only for the editor, terminals and code.
+- Shape: sharp like the rest of the site. The one exception is the agent panel: the prompt card and message
+  bubbles use `--r-chat` (10px).
+- Icons: codicons (`Codicon.tsx`) for the workbench. File and folder logos are a Material Icon Theme subset in
+  `public/file-icons/`, with the name map in `lib/fileIcons.json`. `web/scripts/file-icons.mjs` regenerates both, and
+  the result is committed, so the Next build has no extra step. Unknown files get the generic icon.
+- Activity bar: only views that work. Explorer, Search, Source Control (read-only) and Testing. Do not add a
+  button that does nothing, and the same goes for bottom panel tabs and the prompt card.
+- Terminals are real shells (`components/ide/terminal/`): `store.ts` holds each xterm outside React, so one survives
+  moves between the panel and the editor; a slot adopts its host `<div>`. From two terminals up a rail appears on the
+  right. Drags: every sash, rail rows to reorder, a terminal onto the terminal area to split, onto the editor to dock.
+- **Folder tabs** (`FolderTabs.tsx`) sit in the top bar. A tab is a whole workspace with its own files, terminals, chat, graph
+  and Private setting. Hidden folders use `visibility: hidden`, never `display: none`, because the panels read size 0 as
+  collapsed and xterm cannot measure. A folder that is working says so in a word: Working, Waiting or Needs you. Close is
+  disabled during a request, with the reason in its title, and unsaved work asks inline. Anything on `window` takes an
+  `active` or `shown` prop, so a hidden folder never answers the keyboard.
+- **Live tab** (`LiveView.tsx`): the work so far on the left, code on the right. The wording stays true: quiet is "No output
+  for 1m 20s. The model may still be working.", never "stuck". Private shows a reply's code when it finishes, because
+  Ollama holds tool calls back, and the tab says so. Added and removed lines keep their `+` and `-` signs.
+- The prompt shows the current model as plain text. The picker waits for the owner's plan for the AI part.
+- Slash commands live in `IDE.commands.list` in `lib/content.ts`, chat only, because a real shell owns its keyboard.
+  One with a `prompt` is a premade request to the assistant; the rest run in `components/ide/useCommands.ts` and
+  spend no tokens. `components/ide/Slash.tsx` holds the menu and the Up arrow history.
+- The chat speaks to a non-programmer: plain progress first, tool details only when a step is opened.
 - Below the IDE's minimum width it shows a notice instead of a squeezed layout. The chat, plan and Undo
   stay usable.
 - `/console` still works with `pcode serve` but is out of the nav. The IDE is the app's front door.

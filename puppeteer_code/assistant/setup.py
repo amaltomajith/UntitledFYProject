@@ -7,11 +7,12 @@ API keys for people who are not running from this repo. They live in
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Optional
 
-from puppeteer_code.assistant.snapshots import pcode_home
+from puppeteer_code.assistant.snapshots import pcode_home, project_folder
 
 # In preference order: the first one with a key is used.
 PROVIDER_KEYS = {"nebius": "NEBIUS_API_KEY", "groq": "GROQ_API_KEY"}
@@ -53,3 +54,21 @@ def key_status() -> dict[str, bool]:
 
 def pick_provider() -> Optional[str]:
     return next((p for p, ready in key_status().items() if ready), None)
+
+
+def _settings_file(project: str | Path, home: Optional[Path]) -> Path:
+    return project_folder(project, home) / "settings.json"
+
+
+def is_private(project: str | Path, home: Optional[Path] = None) -> bool:
+    """Whether Private was left on for this project."""
+    try:
+        return json.loads(_settings_file(project, home).read_text(encoding="utf-8")).get("private") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def remember_private(project: str | Path, on: bool, home: Optional[Path] = None) -> None:
+    path = _settings_file(project, home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"private": on}), encoding="utf-8")

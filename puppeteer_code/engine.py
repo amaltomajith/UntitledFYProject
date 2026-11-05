@@ -37,6 +37,7 @@ from puppeteer_code.agents import BASE_POOL, make_agent, make_pool
 from puppeteer_code.environment import CodeEnvironment
 from puppeteer_code.policy import HeuristicPolicy, Policy
 from puppeteer_code.reward import episode_rewards
+from puppeteer_code.sandbox import private_runner
 from puppeteer_code.shield import allowed_actions
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,8 @@ class CodeOrchestrator:
         tokens_before = self.session.meter.total_tokens
 
         env = CodeEnvironment(EnvironmentConfig(task=task, max_steps=cfg.max_steps), repo,
-                              test_timeout=cfg.test_timeout, tdd=cfg.tdd)
+                              test_timeout=cfg.test_timeout, tdd=cfg.tdd,
+                              runner=private_runner(repo) if self.session.private else None)
         self.on_event({"type": "start", "task": task, "baseline": env.state.baseline.to_dict(),
                        "max_steps": cfg.max_steps})
         pool = {a.name: a for a in make_pool(self.session, BASE_POOL)}

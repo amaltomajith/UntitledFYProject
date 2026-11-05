@@ -15,27 +15,28 @@ import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } f
 import { tags } from "@lezer/highlight";
 
 const highlight = HighlightStyle.define([
-  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--accent-hi)" },
-  { tag: [tags.string, tags.special(tags.string), tags.regexp], color: "var(--good)" },
+  { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--syn-keyword)" },
+  { tag: [tags.string, tags.special(tags.string), tags.regexp], color: "var(--syn-string)" },
   { tag: [tags.comment, tags.meta], color: "var(--ink-3)", fontStyle: "italic" },
-  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: "var(--bad)" },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.className, tags.typeName], color: "#ffffff" },
-  { tag: [tags.tagName, tags.heading], color: "var(--accent-hi)", fontWeight: "600" },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: "var(--syn-number)" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--syn-function)" },
+  { tag: [tags.className, tags.typeName], color: "var(--syn-type)" },
+  { tag: [tags.tagName, tags.heading], color: "var(--syn-keyword)", fontWeight: "600" },
   { tag: tags.attributeName, color: "var(--ink-2)" },
 ]);
 
 const theme = EditorView.theme(
   {
-    "&": { height: "100%", fontSize: "13.5px", backgroundColor: "transparent", color: "var(--ink)" },
+    "&": { height: "100%", fontSize: "13px", backgroundColor: "transparent", color: "var(--ink)" },
     ".cm-scroller": { fontFamily: "var(--f-mono)", lineHeight: "1.6", overflow: "auto" },
-    ".cm-content": { caretColor: "var(--accent-hi)", paddingBlock: "10px" },
+    ".cm-content": { caretColor: "var(--ink)", paddingBlock: "10px" },
     ".cm-gutters": { backgroundColor: "transparent", color: "var(--ink-3)", border: "none" },
-    ".cm-activeLine": { backgroundColor: "rgba(180, 170, 240, 0.06)" },
+    ".cm-activeLine": { backgroundColor: "rgba(255, 255, 255, 0.04)" },
     ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--ink)" },
-    ".cm-cursor": { borderLeftColor: "var(--accent-hi)" },
+    ".cm-cursor": { borderLeftColor: "var(--ink)" },
     "&.cm-focused": { outline: "none" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-      backgroundColor: "rgba(91, 61, 245, 0.45) !important",
+      backgroundColor: "var(--select) !important",
     },
     ".cm-changedLine": { backgroundColor: "rgba(126, 226, 168, 0.1) !important" },
     ".cm-deletedChunk": { backgroundColor: "rgba(255, 180, 180, 0.1)" },
@@ -75,16 +76,19 @@ type Props = {
   readOnly: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
+  reveal?: { line: number; end?: number } | null;
 };
 
-export default function CodeEditor({ path, value, readOnly, onChange, onSave }: Props) {
+export default function CodeEditor({ path, value, readOnly, onChange, onSave, reveal }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const lock = useRef(new Compartment());
   const handlers = useRef({ onChange, onSave });
   handlers.current = { onChange, onSave };
+  const crlf = useRef(false);
 
   useEffect(() => {
+    crlf.current = value.includes("\r\n");
     const editor = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -99,7 +103,9 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave }: 
             indentWithTab,
           ]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) handlers.current.onChange(update.state.doc.toString());
+            if (!update.docChanged) return;
+            const text = update.state.doc.toString();
+            handlers.current.onChange(crlf.current ? text.replace(/\n/g, "\r\n") : text);
           }),
           EditorView.contentAttributes.of({ "aria-label": `Code of ${path}` }),
         ],
@@ -112,8 +118,9 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave }: 
   }, [path]);
 
   useEffect(() => {
+    // CodeMirror keeps \n internally, so a CRLF file is not a change.
     const editor = view.current;
-    if (!editor || editor.state.doc.toString() === value) return;
+    if (!editor || editor.state.doc.toString() === value.replace(/\r\n?/g, "\n")) return;
     editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
   }, [value]);
 
@@ -122,6 +129,16 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave }: 
       effects: lock.current.reconfigure([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
     });
   }, [readOnly]);
+
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || !reveal) return;
+    const { doc } = editor.state;
+    const line = doc.line(Math.min(reveal.line, doc.lines));
+    const head = reveal.end ? doc.line(Math.min(reveal.end, doc.lines)).to : line.from;
+    editor.dispatch({ selection: { anchor: line.from, head }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+    editor.focus();
+  }, [reveal]);
 
   return <div ref={host} className="ide-code" />;
 }

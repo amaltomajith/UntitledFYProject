@@ -23,6 +23,8 @@ STALL_LIMIT = 3
 class RequestState:
     request: str
     small: bool = False
+    planned: bool = False               # the user already approved a plan
+    no_review: bool = False             # the `fast` effort skips the Reviewer
     new_project: bool = False
     testable: bool = False
     stack: str = ""
@@ -36,6 +38,8 @@ class RequestState:
     best: Optional[Check] = None
     check: Optional[Check] = None
     start_sha: str = ""
+    memory: str = ""                    # the graph's brief, when memory is on
+    related: Optional[list[str]] = None     # the graph's pick of files to show
     best_sha: str = ""
     failure: str = ""
     notes: list[str] = dataclasses.field(default_factory=list)
@@ -65,7 +69,7 @@ def allowed(st: RequestState) -> list[str]:
     room = lambda name: st.used[name] < MAX_USES[name]
     stuck = st.stall >= STALL_LIMIT or st.step >= st.max_steps - 1
 
-    if not st.small and not st.built and st.step == 0 and room("Planner"):
+    if not st.small and not st.planned and not st.built and st.step == 0 and room("Planner"):
         out.append("Planner")
     if not stuck:
         if not st.built and room("Builder"):
@@ -76,7 +80,7 @@ def allowed(st: RequestState) -> list[str]:
         needs_fix = st.failing or (st.review and not st.review_handled)
         if st.built and needs_fix and room("Debugger"):
             out.append("Debugger")
-        if st.built and not st.failing and not st.small and room("Reviewer") and not st.review:
+        if st.built and not st.failing and not st.small and not st.no_review and room("Reviewer") and not st.review:
             out.append("Reviewer")
     if not out or (st.built and not st.failing and "Debugger" not in out):
         out.append("Responder")

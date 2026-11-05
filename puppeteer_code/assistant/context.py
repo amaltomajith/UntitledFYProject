@@ -9,7 +9,10 @@ request costs no more context than step 2.
 from __future__ import annotations
 
 import json
+import posixpath
+from typing import Optional
 
+from puppeteer_code.assistant.codemap import parse
 from puppeteer_code.index import tokenize
 
 MAX_PROMPT_CHARS = 24000
@@ -22,6 +25,9 @@ TURN_CHARS = 600
 RECENT_TURNS = 6
 SUMMARY_CHARS = 1200
 REMOVED = "(older output removed to keep this short)"
+FOLDED = "(read earlier: "
+FOLD_SYMBOLS = 8
+WRITERS = ("write_file", "edit_file")
 
 
 def file_map(toolbox) -> str:
@@ -34,8 +40,24 @@ def file_map(toolbox) -> str:
     return "\n".join(files) or "(the folder is empty)"
 
 
-def relevant_code(toolbox, request: str) -> str:
-    """Files sharing the most words with the request. Free: no model is involved."""
+def _picked(toolbox, files: list[str]) -> str:
+    shown = []
+    for rel in files:
+        try:
+            shown.append(f"--- {rel}\n{(toolbox.root / rel).read_text(encoding='utf-8')[:SNIPPET_CHARS]}")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return "\n\n".join(shown)
+
+
+def relevant_code(toolbox, request: str, files: Optional[list[str]] = None) -> str:
+    """Files sharing the most words with the request. Free: no model is involved.
+
+    `files` is the memory graph's pick, which saves reading the whole project.
+    """
+    picked = _picked(toolbox, files) if files else ""
+    if picked:
+        return picked
     words = set(tokenize(request))
     scored = []
     for rel in toolbox._walk(toolbox.root):
@@ -69,8 +91,10 @@ def task_for(st, toolbox, instruction: str) -> str:
     parts = [f"Request: {st.request}"]
     if st.plan:
         parts.append("Plan:\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(st.plan, 1)))
+    if st.memory:
+        parts.append(st.memory)
     parts.append("Files:\n" + file_map(toolbox))
-    code = relevant_code(toolbox, st.request)
+    code = relevant_code(toolbox, st.request, st.related)
     if code:
         parts.append("Possibly relevant code:\n" + code)
     if st.notes:
@@ -95,6 +119,69 @@ def _shrink_call(call: dict) -> None:
         args = {}
     short = {k: (v if len(str(v)) <= 80 else "(removed)") for k, v in args.items()}
     call["function"]["arguments"] = json.dumps(short)
+
+
+def path_of(arguments: str) -> str:
+    try:
+        path = json.loads(arguments or "{}").get("path", "")
+    except (ValueError, AttributeError):
+        return ""
+    return posixpath.normpath(str(path).replace("\\", "/")) if path else ""
+
+
+def _outline(path: str, text: str) -> str:
+    """Symbols of the text being folded, so the line numbers are those of what was read."""
+    names = [f"{s.qualname} {s.lineno}-{s.end_lineno}" for s in parse(path, text).symbols[:FOLD_SYMBOLS]]
+    return f" Symbols: {', '.join(names)}." if names else ""
+
+
+def fold(messages: list[dict]) -> list[dict]:
+    """Replace read_file results that can no longer help, in place. Returns what was folded.
+
+    Kept: the last few tool results, errors, and the latest read of a file with no edit
+    after it, because edit_file needs that exact text and folding it would cost a re-read.
+    So what goes is a read made stale by an edit, or repeated by a later read.
+    """
+    calls = {c["id"]: c["function"] for m in messages for c in m.get("tool_calls") or []}
+    results = [i for i, m in enumerate(messages) if m["role"] == "tool"]
+    latest: dict[str, int] = {}
+    edited: dict[str, int] = {}
+    for i in results:
+        call = calls.get(messages[i].get("tool_call_id"))
+        if call is None:
+            continue
+        path = path_of(call["arguments"])
+        if call["name"] == "read_file" and not messages[i]["content"].startswith("ERROR"):
+            latest[path] = i
+        elif call["name"] in WRITERS:
+            edited[path] = i
+    folded = []
+    for i in results[:-KEEP_RECENT]:
+        message = messages[i]
+        call = calls.get(message.get("tool_call_id"))
+        text = message["content"]
+        if (call is None or call["name"] != "read_file" or text.startswith(("ERROR", FOLDED)) or text == REMOVED):
+            continue
+        path = path_of(call["arguments"])
+        if latest.get(path) == i and edited.get(path, -1) < i:
+            continue
+        short = (f"{FOLDED}{path}, {len(text)} characters.{_outline(path, text)} "
+                 "Read it again if you need exact text.)")
+        if len(short) < len(text):
+            message["content"] = short
+            folded.append({"key": (call["name"], call["arguments"]), "path": path, "chars": len(text) - len(short)})
+    return folded
+
+
+def saved_chars(messages: list[dict], removed: int, memory: int, limit: int = MAX_PROMPT_CHARS) -> int:
+    """What folding saved on this prompt, net of the memory it carries.
+
+    `trim` would have cut a long prompt to `limit` anyway, so only the part below the
+    limit counts. `removed` is already net of re-reads, and can be negative.
+    """
+    size = sum(_size(m) for m in messages)
+    gain = max(0, min(size + removed, limit) - size) if removed > 0 else removed
+    return gain - memory
 
 
 def trim(messages: list[dict], limit: int = MAX_PROMPT_CHARS) -> list[dict]:

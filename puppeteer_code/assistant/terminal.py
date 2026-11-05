@@ -19,7 +19,8 @@ from rich.markdown import Markdown
 from rich.markup import escape
 
 from puppeteer_code.assistant.session import AssistantSession
-from puppeteer_code.assistant.setup import KEY_HELP, load_keys, pick_provider, save_key
+from puppeteer_code.assistant.setup import KEY_HELP, is_private, load_keys, pick_provider, remember_private, save_key
+from puppeteer_code.privacy import OUTSIDE, private_claim
 
 MAX_OUTPUT_LINES = 12
 ACTIONS = {"created": "[green]+[/green]", "edited": "[yellow]~[/yellow]", "deleted": "[red]-[/red]"}
@@ -28,7 +29,11 @@ HELP = """[bold]Just type what you want[/bold], in plain words.
 
   /undo            put back what the last request changed
   /plan            show the current plan
-  /mode ask|auto   ask before commands, or do not
+  /approve         run the plan that is waiting
+  /mode plan|ask|auto   plan changes nothing until you approve; ask checks before commands; auto does not
+  /effort LEVEL    fast, normal, think or deep
+  /think MESSAGE   use more effort for this one request
+  /private [on|off]  what Private covers, or change it for this folder
   /model           show the models in use
   /model fast ID   change a model (or: /model quality ID)
   /usage           tokens used so far
@@ -83,11 +88,18 @@ class Terminal:
         session = self.session
         tiers = session.provider.tiers
         self.console.print(f"[bold]Puppeteer-Code[/bold]  {escape(str(session.project))}")
+        if session.private:
+            self.console.print(f"[bold]Private.[/bold] {private_claim(session.tools.runner)}")
+            if session.tools.runner.warning():
+                self.console.print(f"[yellow]{escape(session.tools.runner.warning())}[/yellow]")
         self.console.print(f"[dim]{session.provider.provider}: fast {tiers.get('fast')}, "
-                           f"quality {tiers.get('quality')}. Mode {session.tools.mode}. /help for commands.[/dim]")
+                           f"quality {tiers.get('quality')}. Mode {session.tools.mode}, effort {session.effort}. "
+                           f"/help for commands.[/dim]")
 
-    def request(self, message: str) -> None:
-        stream = self.session.send(message)
+    def request(self, message: str, effort: Optional[str] = None) -> None:
+        self._stream(self.session.send(message, effort=effort))
+
+    def _stream(self, stream) -> None:
         while True:
             try:
                 event = next(stream)
@@ -119,6 +131,9 @@ class Terminal:
         self._reply += event["text"]
         self._live.update(Markdown(self._reply), refresh=True)
 
+    def _on_memory(self, event: dict) -> None:
+        self.console.print(f"[dim]{escape(event['text'])}[/dim]")
+
     def _on_notice(self, event: dict) -> None:
         self.console.print(f"[yellow]{escape(event['text'])}[/yellow]")
 
@@ -127,6 +142,11 @@ class Terminal:
         self.console.print("[bold]Plan[/bold]")
         for i, step in enumerate(self.plan, 1):
             self.console.print(f"  {i}. {escape(step)}")
+        if event.get("pending"):
+            self.console.print("Nothing has changed. /approve runs this plan, or say what to do differently.")
+
+    def _on_effort(self, event: dict) -> None:
+        self.console.print(f"[dim]Effort {escape(event['level'])}. {escape(event['how'])}[/dim]")
 
     def _on_agent(self, event: dict) -> None:
         self.console.print(f"[dim]{escape(event.get('label') or event['agent'])}...[/dim]")
@@ -221,6 +241,41 @@ class Terminal:
                 self.console.print(f"[red]{e}[/red]")
         self.console.print(f"Mode: {self.session.tools.mode}")
 
+    def _cmd_private(self, args) -> None:
+        session = self.session
+        if args and args[0] in ("on", "off"):
+            remember_private(session.project, args[0] == "on", session.home)
+            self.console.print(f"Private is {args[0]} for this folder from the next start.")
+        if session.private:
+            self.console.print(f"Private is on. {private_claim(session.tools.runner)}")
+            self.console.print(f"Not covered: {', '.join(OUTSIDE)}.")
+            if session.tools.runner.warning():
+                self.console.print(f"[yellow]{escape(session.tools.runner.warning())}[/yellow]")
+            if session.tools.runner.name == "direct":
+                self.console.print("To block the network for commands, run: pcode private-setup")
+        else:
+            self.console.print("Private is off. This conversation uses a cloud model.")
+
+    def _cmd_approve(self, args) -> None:
+        try:
+            self._stream(self.session.approve_plan())
+        except ValueError as e:
+            self.console.print(f"[red]{escape(str(e))}[/red]")
+
+    def _cmd_effort(self, args) -> None:
+        if args:
+            try:
+                self.session.set_effort(args[0])
+            except ValueError as e:
+                self.console.print(f"[red]{e}[/red]")
+        self.console.print(f"Effort: {self.session.effort}")
+
+    def _cmd_think(self, args) -> None:
+        if not args:
+            self.console.print("Use /think followed by your request.")
+            return
+        self.request(" ".join(args), effort="think")
+
     def _cmd_model(self, args) -> None:
         tiers = self.session.provider.tiers
         if len(args) == 2 and args[0] in tiers:
@@ -232,12 +287,12 @@ class Terminal:
         self.console.print(f"{self.session.provider.meter.total_tokens:,} tokens this run")
 
     def _cmd_clear(self, args) -> None:
-        self.session.history = []
+        self.session.clear()
         self.plan = []
         self.console.print("Started a new conversation. Undo still works.")
 
     def _cmd_resume(self, args) -> None:
-        rows = AssistantSession.list_sessions(self.session.project, self.session.home)
+        rows = AssistantSession.list_sessions(self.session.project, self.session.home, self.session.private)
         if not args:
             if not rows:
                 self.console.print("No earlier conversations in this folder.")
@@ -250,7 +305,11 @@ class Terminal:
         except (ValueError, IndexError):
             self.console.print("[red]No such conversation.[/red]")
             return
-        self.session.adopt(row["id"])
+        try:
+            self.session.adopt(row["id"])
+        except ValueError as e:
+            self.console.print(f"[red]{escape(str(e))}[/red]")
+            return
         self.console.print(f"Continuing: {escape(row['title'])}")
 
 
@@ -272,12 +331,22 @@ def run_chat(args) -> int:
     from puppeteer_code.providers import ProviderSession
 
     load_keys()
-    provider = args.provider or pick_provider() or _ask_for_key(None)
+    if args.provider == "local":
+        remember_private(args.folder, True)
+    private = is_private(args.folder) and args.provider is None
+    provider = "local" if private else args.provider or pick_provider() or _ask_for_key(None)
     if provider is None:
         return 1
     models = ProviderSession(provider, cache_dir=args.cache)
     if args.resume:
-        session = AssistantSession.resume(args.resume, models, mode=args.mode)
+        try:
+            session = AssistantSession.resume(args.resume, models, mode=args.mode, effort=args.effort, memory=True)
+        except FileNotFoundError:
+            print("No such conversation.")
+            return 1
+        except ValueError as e:
+            print(e)
+            return 1
     else:
-        session = AssistantSession(args.folder, models, mode=args.mode)
+        session = AssistantSession(args.folder, models, mode=args.mode, effort=args.effort, memory=True)
     return Terminal(session).run()

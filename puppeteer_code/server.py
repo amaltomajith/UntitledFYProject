@@ -124,7 +124,7 @@ class RunManager:
             self.runs[run.id] = run
             for old in [r for r in self.runs.values() if r.done][:-KEEP_LOGS]:
                 del self.runs[old.id]
-        config = RunConfig(max_steps=req.max_steps, tdd=req.tdd)
+        config = RunConfig(max_steps=req.max_steps, tdd=req.tdd, explore=not session.private)
         threading.Thread(target=self._work, args=(run, session, policy, config), daemon=True).start()
         return run
 
@@ -279,11 +279,67 @@ def collect_training(runs_dir: Path) -> list[dict]:
     return out
 
 
+# PCodeBench-Build files shown on the site, with their token limit. Other buildbench files on disk are
+# debugging runs (one provider-error row each) and are not results.
+BUILD_LABELS = {
+    "buildbench-nebius.json": {"limit": 60000, "role": "primary"},
+    "buildbench-nebius-150k.json": {"limit": 150000, "role": "sensitivity"},
+}
+
+
+def _load_real(path: Path) -> Optional[dict]:
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) and d.get("provider") in REAL_PROVIDERS else None
+
+
+def collect_build(runs_dir: Path) -> list[dict]:
+    out = []
+    for name, label in BUILD_LABELS.items():
+        d = _load_real(Path(runs_dir) / name)
+        if d is None:
+            continue
+        all_rows = d.get("rows") or []
+        rows = [r for r in all_rows if not r.get("provider_error")]
+        models = sorted({m for r in rows for m in (r.get("models") or [])})
+        out.append({
+            "id": Path(name).stem, "provider": d["provider"], "dataset": d.get("benchmark", "PCodeBench-Build"),
+            "methods": d.get("methods") or [], "tasks": len(d.get("tasks") or []), "seeds": d.get("seeds"),
+            "token_limit": d.get("token_budget") or label["limit"], "role": label["role"], "models": models,
+            "runs": len(rows), "provider_errors": len(all_rows) - len(rows), "summary": d.get("summary") or {},
+        })
+    return out
+
+
+def collect_reasoning(runs_dir: Path) -> list[dict]:
+    """Reasoning-benchmark results for the thesis core. Smoke runs are pipeline checks, never results."""
+    out = []
+    for path in sorted(Path(runs_dir).glob("reasoning-*.json")):
+        d = _load_real(path)
+        if d is None or d.get("smoke") or not d.get("rows"):
+            continue
+        dataset_of = {r["task"]: r["dataset"] for r in d["rows"]}
+        per_dataset: dict[str, int] = {}
+        for tid in d.get("tasks") or []:
+            if tid in dataset_of:
+                per_dataset[dataset_of[tid]] = per_dataset.get(dataset_of[tid], 0) + 1
+        out.append({
+            "id": path.stem, "provider": d["provider"], "model": d.get("model"), "config": d.get("config") or {},
+            "datasets": d.get("datasets") or [], "methods": d.get("methods") or [], "seeds": d.get("seeds"),
+            "partial": bool(d.get("partial")), "excluded": d.get("excluded", 0), "tasks": per_dataset,
+            "summary": d.get("summary") or {},
+        })
+    return out
+
+
 def export_web(runs_dir: Path, out_dir: Path) -> dict:
     """Write the hosted site's data files. Simulated and scripted data never pass this point."""
     runs_dir, out_dir = Path(runs_dir), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stats = {"benchmarks": collect_benchmarks(runs_dir), "training": collect_training(runs_dir)}
+    stats = {"benchmarks": collect_benchmarks(runs_dir), "training": collect_training(runs_dir),
+             "build": collect_build(runs_dir), "reasoning": collect_reasoning(runs_dir)}
     for name, data in stats.items():
         (out_dir / f"{name}.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
 
@@ -296,6 +352,7 @@ def export_web(runs_dir: Path, out_dir: Path) -> dict:
     if demo is not None:
         (out_dir / "demo-run.json").write_text(json.dumps(demo, indent=1), encoding="utf-8")
     return {"benchmarks": len(stats["benchmarks"]), "training": len(stats["training"]),
+            "build": len(stats["build"]), "reasoning": len(stats["reasoning"]),
             "demo_run": demo["id"] if demo else None}
 
 
@@ -432,7 +489,8 @@ def create_app(runs_dir: Optional[Path] = None, static_dir: Optional[Path] = Non
 
     @app.get("/api/benchmarks")
     def benchmarks():
-        return {"benchmarks": collect_benchmarks(runs_dir), "training": collect_training(runs_dir)}
+        return {"benchmarks": collect_benchmarks(runs_dir), "training": collect_training(runs_dir),
+                "build": collect_build(runs_dir), "reasoning": collect_reasoning(runs_dir)}
 
     if ide is not None:
         from puppeteer_code.assistant.ide import register_ide
@@ -466,4 +524,5 @@ def serve(host_port: int = 8765, mock_solution: Optional[str] = None, ide=None) 
     if mock_solution:
         factory = lambda provider: default_session(provider, mock_solution)   # noqa: E731
     uvicorn.run(create_app(session_factory=factory, port=host_port, ide=ide), host="127.0.0.1",
-                port=host_port, log_level="warning")
+                port=host_port, log_level="warning",
+                ws_per_message_deflate=False)

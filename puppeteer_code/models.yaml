@@ -44,6 +44,25 @@ providers:
         - openai/gpt-oss-120b
     prices: {}
 
+  # Private mode. One model in both tiers, because swapping models costs a full reload.
+  # The first installed candidate is used, else any installed model. Nothing is ever pulled.
+  local:
+    base_url: http://127.0.0.1:11435
+    private: true
+    num_ctx: 16384
+    keep_alive: 10m
+    token_budget: 150000    # starting values: a local turn is slower and free
+    max_seconds: 1800
+    reply_tokens: 10000     # for agents that write code; the context window still caps it
+    tiers:
+      fast: &local_models
+        - qwen3.5:9b
+        - qwen3:8b
+        - qwen2.5-coder:7b
+        - granite4:latest
+      quality: *local_models
+    prices: {}
+
   mock:
     tiers:
       fast: [mock-fast]

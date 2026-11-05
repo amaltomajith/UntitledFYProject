@@ -1,0 +1,22 @@
+CompactCode (Puppeteer-Code)
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes third-party material:
+
+- Codicons, Copyright (c) Microsoft Corporation, CC-BY-4.0
+  https://github.com/microsoft/vscode-codicons
+  Used unchanged in the browser IDE, through the @vscode/codicons package.
+
+- Material Icon Theme, MIT licence
+  https://github.com/material-extensions/vscode-material-icon-theme
+  A subset of its SVG files is in web/public/file-icons/, with the licence in
+  web/public/file-icons/LICENSE.txt.
+
+- Benchmark questions in benchmarks/reasoning/tasks/ are small fixed samples of public datasets,
+  each under the MIT licence, fetched through the Hugging Face datasets-server API:
+  - GSM8K, Copyright (c) 2021 OpenAI (Cobbe et al., 2021), https://huggingface.co/datasets/openai/gsm8k
+  - GSM-Hard (Gao et al., 2023, PAL), https://huggingface.co/datasets/reasoning-machines/gsm-hard
+  - MMLU-Pro, TIGER-Lab (Wang et al., 2024), https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro
+  - BIG-Bench Hard (Suzgun et al., 2022), https://github.com/suzgun/BIG-Bench-Hard, through the
+    mirror https://huggingface.co/datasets/lukaemon/bbh
+  GAIA questions are never stored in this repository, because GAIA's terms ask that they not be reshared.
