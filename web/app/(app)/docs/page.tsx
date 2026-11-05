@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Command } from "@/components/Command";
+import { InstallTabs } from "@/components/InstallTabs";
 import { DOCS } from "@/lib/content";
 
 export const metadata: Metadata = { title: "Docs · CompactCode" };
@@ -26,11 +27,14 @@ export default function DocsPage() {
             <section key={s.id} id={s.id} className="doc">
               <h2 className="doc__title">{s.title}</h2>
               <p className="doc__text">{s.body}</p>
-              <ol className="cmds cmds--tight">
-                {s.commands.map((c) => (
-                  <Command key={c.label} {...c} />
-                ))}
-              </ol>
+              {"install" in s && s.install ? <InstallTabs source /> : null}
+              {s.commands.length ? (
+                <ol className="cmds cmds--tight">
+                  {s.commands.map((c) => (
+                    <Command key={c.label} {...c} />
+                  ))}
+                </ol>
+              ) : null}
               {s.note ? <p className="muted">{s.note}</p> : null}
             </section>
           ))}

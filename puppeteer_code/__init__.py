@@ -20,4 +20,4 @@ _project_root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _project_root not in _sys.path:
     _sys.path.insert(0, _project_root)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

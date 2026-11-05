@@ -618,7 +618,34 @@ were removed (see git history at `bda62f3`).
 
 ## 10. Setup, running and testing
 
-**Prerequisites:** Python 3.10+, a free Groq API key from <https://console.groq.com>.
+**Install the app (CompactCode) with one line.** No Python or Node needed first. The installer gets
+[uv](https://docs.astral.sh/uv/) from Astral if it is missing, reads the latest GitHub release, checks the wheel
+against the release's `SHA256SUMS`, and installs it as a uv tool with its own Python 3.12. No admin rights.
+
+```bash
+curl -fsSL https://compactcode.vercel.app/install.sh | sh                                     # macOS, Linux
+irm https://compactcode.vercel.app/install.ps1 | iex                                          # PowerShell
+powershell -ExecutionPolicy ByPass -c "irm https://compactcode.vercel.app/install.ps1 | iex"  # cmd
+```
+
+Then type `compactcode` in a project folder: the browser IDE opens on that folder (the home folder or a system
+folder opens the saved tabs instead). `compactcode <command>` is the same as `pcode <command>`. Remove it with
+`uv tool uninstall compactcode`. Installer options: `COMPACTCODE_VERSION` pins a version, `COMPACTCODE_NO_MODIFY_PATH=1`
+leaves PATH alone.
+
+**Updates.** CompactCode checks the GitHub releases API once a day (one HTTPS request; no code, keys or folder
+names are sent) and says so in the IDE (a banner, the status bar, an optional desktop notification) and in the
+terminal. Nothing installs until the user clicks *Update and restart* or runs `compactcode update`. A helper process
+waits for CompactCode to exit, installs the verified wheel with uv, logs to `~/.pcode/logs/update.log`, and starts
+CompactCode again. Automatic checks are off in Private mode and with `COMPACTCODE_NO_UPDATE_CHECK=1`. A git checkout is
+never updated this way: use `git pull`.
+
+**Releases.** Pushing a tag `vX.Y.Z` that matches `puppeteer_code.__version__` runs `.github/workflows/release.yml`: it
+builds the site, bundles it into the wheel (`scripts/build_release.py`), smoke-tests the wheel in a clean venv, and
+publishes the wheel, `SHA256SUMS` and both installers as a GitHub Release.
+
+**From source (developers).** Python 3.10+, and a key: Nebius Token Factory, or a free Groq key from
+<https://console.groq.com>.
 
 ```bash
 python -m venv .venv

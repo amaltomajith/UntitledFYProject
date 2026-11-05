@@ -1,0 +1,66 @@
+# On a version tag (v0.2.0), build the wheel with the IDE page inside, smoke-test it in a clean environment, and
+# publish a GitHub Release with the wheel, SHA256SUMS and both installers. The installers and the update check
+# read this release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the annotated tag (its message is the release notes)
+        run: git fetch --force --tags origin
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tag matches the package version
+        run: |
+          version="$(python -c 'import re,pathlib; print(re.search(r"__version__ = \"(.+?)\"", pathlib.Path("puppeteer_code/__init__.py").read_text()).group(1))')"
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME but __version__ is $version"; exit 1; }
+
+      - name: Build the site
+        working-directory: web
+        run: npm ci && npm run build
+
+      - name: Build the release files
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python scripts/build_release.py --out dist/release
+
+      - name: Smoke test in a clean environment
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install "$(ls dist/release/compactcode-*.whl)[web]"
+          /tmp/smoke/bin/compactcode --version
+          /tmp/smoke/bin/python -c "import websockets, fastapi, uvicorn"   # the IDE needs a WebSocket library
+          cd /tmp
+          COMPACTCODE_NO_UPDATE_CHECK=1 /tmp/smoke/bin/compactcode ide --no-browser --provider mock --port 8799 > /tmp/ide.log 2>&1 &
+          IDE=$!
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8799/ide.html -o /tmp/ide.html && break; sleep 1; done
+          cat /tmp/ide.log
+          grep -q "<html" /tmp/ide.html
+          kill "$IDE" || true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/release/* \
+            --title "CompactCode ${GITHUB_REF_NAME#v}" \
+            --notes "$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"

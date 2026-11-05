@@ -18,6 +18,7 @@ type Context = {
   showChanges: () => void;
   showPreview: () => void;
   pickFolder: () => void;
+  openUpdates: () => void;
 };
 
 export function useCommands(context: Context) {
@@ -126,6 +127,8 @@ export function useCommands(context: Context) {
           );
         case "preview":
           return view.preview ? context.showPreview() : say(state.private.on ? IDE.private.noPreview : IDE.editor.noPreview);
+        case "update":
+          return context.openUpdates();
         case "folder":
           return view.busy ? say(C.busy) : context.pickFolder();
         case "fix":

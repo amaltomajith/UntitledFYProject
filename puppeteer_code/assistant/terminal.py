@@ -337,6 +337,10 @@ def run_chat(args) -> int:
     provider = "local" if private else args.provider or pick_provider() or _ask_for_key(None)
     if provider is None:
         return 1
+    from puppeteer_code import updates
+    line = updates.notice(private=provider == "local")
+    if line:
+        print(line)
     models = ProviderSession(provider, cache_dir=args.cache)
     if args.resume:
         try:

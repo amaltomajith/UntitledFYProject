@@ -55,6 +55,11 @@ here.
 
 ## 3. Setup
 
+**Users** install with one line (no Python or Node first) and then type `compactcode` in a project folder:
+`curl -fsSL https://compactcode.vercel.app/install.sh | sh` (macOS, Linux) or
+`irm https://compactcode.vercel.app/install.ps1 | iex` (PowerShell; cmd wraps it in `powershell -ExecutionPolicy ByPass -c "..."`).
+**These only work once a GitHub Release exists** (see §8, 2026-11-05 install block). Developers use the steps below.
+
 Python 3.10+ (developed on 3.13, Windows 11; bash and PowerShell both work).
 
 ```bash
@@ -111,6 +116,10 @@ checkpoints/     pcode_linear_sim.json = LinearPolicy weights trained on SIM onl
                  policy_ep*.json = core engine prompt-policy snapshots
 runs/            benchmark/train outputs and the Groq response cache (gitignored, local only)
 ```
+
+Install and updates: `puppeteer_code/paths.py` (site and runs folders for a checkout or an installed copy),
+`puppeteer_code/updates.py` (check, verify, helper), `cli.launch` (the `compactcode` command), `web/public/install.{sh,ps1}`,
+`web/components/InstallTabs.tsx`, `web/components/ide/Updates.tsx`, `scripts/build_release.py`, `.github/workflows/release.yml`.
 
 Private mode: `puppeteer_code/privacy.py` (guard, wording), `ollama.py` (client, spawned server), `sandbox.py`
 (runners, probe, setup), `appcontainer.py` (launcher script), `assistant/effort.py`.
@@ -347,6 +356,10 @@ python -m puppeteer_code report --bench runs/<bench>.json --curve runs/<train>.j
 python -m puppeteer_code mcp      # MCP server; register: claude mcp add puppeteer-code -- python -m puppeteer_code mcp
 python -m puppeteer_code serve    # local API + built site on http://127.0.0.1:8765; build first: cd web && npm ci && npm run build
 python -m puppeteer_code export-web   # real results to web/public/data; refuses sim, oracle, mock
+
+compactcode                       # installed copy: the browser IDE on the current folder (= pcode ide --folder .)
+compactcode update [--check]      # or pcode update; refuses in a git checkout (use git pull)
+python scripts/build_release.py   # after the site build: dist/release/ = wheel with the site inside, SHA256SUMS, installers
 ```
 
 - `--policy linear` defaults to `checkpoints/pcode_linear.json`, which does not exist yet. Pass
@@ -354,6 +367,37 @@ python -m puppeteer_code export-web   # real results to web/public/data; refuses
 - `--seeds N` is a count, not a list.
 
 ## 8. Status (2026-11-05)
+
+**One-line install and updates, 2026-11-05 (branch `ide-terminal-redesign`, uncommitted, nothing published).** Owner's choices:
+`compactcode` opens the browser IDE; the installer uses uv; updates notify and install on one click; IDE banner, status bar,
+terminal line and desktop notification.
+- **Package:** distribution `compactcode` 0.2.0, scripts `compactcode` (`cli.launch`) and `pcode`. The wheel carries the built
+  site as `puppeteer_code/site/` (gitignored, copied in only by `scripts/build_release.py`); 1.8 MB. An installed copy keeps
+  runs in `~/.pcode/runs`. `websockets` was added to the `web` extra: without it the installed IDE could not connect.
+- **Installers** (`web/public/install.sh`, `install.ps1`): uv from Astral if missing, latest release from the GitHub API, wheel
+  checked against `SHA256SUMS`, `uv tool install --force --python 3.12`, `uv tool update-shell`. A cut-off earlier install
+  is uninstalled and retried once. Options `COMPACTCODE_VERSION`, `COMPACTCODE_RELEASE_URL` (tests), `COMPACTCODE_NO_MODIFY_PATH`.
+- **Updates** (`updates.py`): GitHub releases API, at most once a day, cached in `~/.pcode/update.json`; pre-releases ignored;
+  never automatic in Private or with `COMPACTCODE_NO_UPDATE_CHECK=1`. Apply refuses while any folder is busy and in a git
+  checkout, downloads and verifies the wheel, starts a helper, and the IDE stops (watchdog: `os._exit` after 15 s). The helper
+  waits for the whole launcher chain, installs, logs to `~/.pcode/logs/update.log`, and starts `compactcode` again.
+- **IDE:** routes `GET /api/ide/update`, `POST .../check`, `POST .../apply`, `PUT .../settings`; event `update_available`;
+  status bar item, banner ("Later" per version), panel, `/update`, desktop notification toggle (browser Notification API).
+- **Site:** `InstallTabs` (cmd, PowerShell, macOS/Linux, picked from the visitor's OS) on the landing page, Docs and the IDE's
+  no-token page; a Docs "Update" section; "From source" folded away. Release workflow on tag `v*`.
+- **Tests:** 33 new in `tests/test_code_updates.py`. `pytest tests -q`: 863 passed, 2 skipped, 5:55. `npx tsc --noEmit` clean.
+- **End to end on this machine, nothing published** (fake release server on 127.0.0.1, throwaway uv tool folder and home):
+  the cmd one-liner installed 0.2.0; `compactcode` in a folder opened the IDE on it; `update --check`, the terminal line, the
+  banner, the status bar item, `/update`, Esc and "Later" all worked; "Update and restart" from the banner installed 0.2.1
+  and relaunched it. `install.sh` installed uv and 0.2.1 from scratch in WSL Ubuntu with a throwaway HOME, and the IDE served.
+- **Bugs that end-to-end run found, now fixed:** PowerShell 5.1 made uv's stderr fatal; a half-made environment blocked
+  reinstalls; no WebSocket library; the old IDE never exited; the helper waited for only 2 of 3 launcher processes;
+  `DETACHED_PROCESS` made the helper PowerShell exit at once doing nothing; `*>>` wrote a UTF-16 log; the panel sat outside
+  the IDE's colour tokens.
+- **Not tested:** macOS; the desktop notification itself (Chrome's permission prompt blocks the automation); a real GitHub
+  release and the real Vercel-served `install.ps1` (`irm` content type); the workflow itself (it has never run).
+- **Not published:** no tag, no release, and the live site still shows the old install text (the deploy on 2026-11-05 was
+  built from `main`, which does not have this work). Publishing the release and the site together is the owner's call.
 
 **Reasoning benchmark for the thesis core, 2026-11-05.** `benchmarks/reasoning/`, write-up in `docs/BENCHMARKS.md`.
 - Runs `core.Orchestrator` unchanged against `direct`, `cot` and `fixed` (Planner, Reasoning, Critic, Concluder) on 224
@@ -625,6 +669,12 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
 
 ## 9. Next steps (in order, updated 2026-11-05)
 
+First, ship the one-line install, with the owner's go-ahead, in this order: commit the install and update work, merge to
+`main`, push; tag `v0.2.0` with release notes as the tag message and push the tag; check the workflow passed and the release
+has the wheel, `SHA256SUMS`, `install.sh` and `install.ps1`; then build the site from `main` and deploy it (the install
+commands go live only now); then run the real one-liner once in cmd, PowerShell and WSL. If `irm` gets a binary content type
+from Vercel, add a `vercel.json` header for `.ps1`. Later releases: bump `__version__`, tag, push.
+
 Reasoning benchmark, done 2026-11-05 (final numbers in §8 and `docs/BENCHMARKS.md`). Next for it: 3 seeds, thinking on, `nemotron-3-super-120b-a12b`.
 
 
@@ -760,3 +810,12 @@ has their own plan to make it novel, so ask them for it before building anything
 - **A model can reject a true fact in its prompt.** If a claim matters, code writes it.
 - **`pcode ide` buffers its first line when redirected.** Set `PYTHONUNBUFFERED=1`, or an empty log looks like a dead IDE.
 - **On Windows a venv's `python.exe` is a launcher.** Killing it can leave the real process, so kill the port's owner.
+- **A uv tool on Windows is three processes:** `compactcode.exe`, the venv's `python.exe` launcher, the real Python. All three lock
+  files an update replaces, so the helper waits for all three (`updates.processes_to_wait_for`).
+- **Windows PowerShell 5.1 started with `DETACHED_PROCESS` exits at once with code 0 and runs nothing.** Use `CREATE_NO_WINDOW`.
+- **In PowerShell 5.1 a native program's stderr is an error record:** with `$ErrorActionPreference = 'Stop'` uv's progress lines
+  kill the script. `install.ps1` runs native programs through `Invoke-Native` for this reason. `*>>` writes UTF-16 there.
+- **`irm ... | iex` runs in the user's own session**, so `exit` would close their window: `install.ps1` returns instead.
+- **The Claude in Chrome extension's navigation is `sec-fetch-site: cross-site`**, which `LocalOnly` refuses. In a test,
+  open any page on the IDE's port first, then go to `/ide?x#token=...` with `location.replace` (a hash-only change does not load).
+- **F: is exFAT:** no junctions, and a Next build in a worktree there failed on `readlink`. Build a copy on C: instead.

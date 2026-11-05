@@ -93,13 +93,45 @@ export const CAPABILITIES = {
   },
 };
 
+export const SITE_URL = "https://compactcode.vercel.app";
+
+/** One line in the visitor's own terminal: installs uv if needed, then CompactCode, verified against SHA-256. */
+export const INSTALL = {
+  label: "Install CompactCode",
+  tabs: [
+    {
+      id: "cmd",
+      label: "Windows cmd",
+      prompt: ">",
+      cmd: `powershell -ExecutionPolicy ByPass -c "irm ${SITE_URL}/install.ps1 | iex"`,
+    },
+    { id: "powershell", label: "PowerShell", prompt: "PS>", cmd: `irm ${SITE_URL}/install.ps1 | iex` },
+    { id: "unix", label: "macOS / Linux", prompt: "$", cmd: `curl -fsSL ${SITE_URL}/install.sh | sh` },
+  ],
+  then: "Then open a new terminal in your project and type",
+  launch: "compactcode",
+  thenAfter: "It opens in your browser.",
+  note: "It installs uv from Astral if you do not have it, then CompactCode with its own Python. No admin rights. The download is checked against its published SHA-256 before anything is installed.",
+  uninstall: "To remove it: uv tool uninstall compactcode",
+  copied: "Copied",
+  source: {
+    title: "From source, for developers",
+    commands: [
+      { label: "Clone", cmd: "git clone https://github.com/amaltomajith/UntitledFYProject" },
+      { label: "Install", cmd: 'pip install -e ".[mcp,web]"' },
+      { label: "Build the IDE page", cmd: "cd web && npm ci && npm run build" },
+      { label: "Start", cmd: "pcode ide" },
+    ],
+  },
+};
+
 export const START = {
-  title: "Add it in two commands.",
-  note: "Put NEBIUS_API_KEY or GROQ_API_KEY in .env first. Today the fixer works on repos with a pytest suite.",
+  title: "Install it in one line.",
+  note: "Paste this into your terminal. The IDE asks for a Nebius or Groq key the first time it opens.",
+  then: "Already use an AI assistant? Add CompactCode to it. Today the fixer works on repos with a pytest suite.",
   commands: [
-    { label: "Install", cmd: 'pip install -e ".[mcp]"' },
-    { label: "Add to Claude Code", cmd: "claude mcp add compactcode -- python -m puppeteer_code mcp" },
-    { label: "Any other MCP client", cmd: "pcode mcp" },
+    { label: "Add to Claude Code", cmd: "claude mcp add compactcode -- compactcode mcp" },
+    { label: "Any other MCP client", cmd: "compactcode mcp" },
     { label: "Or from your terminal", cmd: 'pcode fix "mean() is wrong for even lists" --repo path/to/repo' },
   ],
   results: {
@@ -140,12 +172,8 @@ export const SERVER_STATUS = { checking: "Checking", live: "Local server", offli
 export const LOCAL_RUN = {
   title: "Run it on your own repo",
   body: "The assistant runs on your machine, so your code stays there.",
-  commands: [
-    { label: "Install", cmd: 'pip install -e ".[web]"' },
-    { label: "Build the site", cmd: "cd web && npm ci && npm run build" },
-    { label: "Start the IDE", cmd: "pcode ide" },
-  ],
-  after: "It opens in your browser. On Windows, you can double-click start-pcode.bat instead.",
+  commands: [{ label: "Start the IDE", cmd: "compactcode" }],
+  after: "Install it with the one-line command on the Docs page first. It opens in your browser.",
 };
 
 export const CONSOLE = {
@@ -357,16 +385,24 @@ export const BENCH = {
 
 export const DOCS = {
   title: "Docs",
-  lead: "From a fresh clone to a verified diff.",
+  lead: "From one install line to a verified change.",
   sections: [
     {
       id: "install",
       title: "Install",
-      body: "Python 3.10 or newer, and Node.js to build the IDE page. The assistant works in any folder, in any language your machine can run.",
+      body: "Run one line in your terminal. You do not need Python or Node first. The assistant works in any folder, in any language your machine can run.",
+      install: true,
+      commands: [],
+    },
+    {
+      id: "update",
+      title: "Update",
+      body: "CompactCode checks GitHub for a new release once a day and tells you in the IDE, in the terminal and, if you turn it on, with a desktop notification. Nothing is installed until you click Update and restart, or run the command below. The check sends no code, keys or folder names. In Private it only checks when you ask.",
       commands: [
-        { label: "Clone", cmd: "git clone https://github.com/amaltomajith/UntitledFYProject" },
-        { label: "Install", cmd: 'pip install -e ".[mcp,web]"' },
+        { label: "Check", cmd: "compactcode update --check" },
+        { label: "Update", cmd: "compactcode update" },
       ],
+      note: "Set COMPACTCODE_NO_UPDATE_CHECK=1 to turn the daily check off. A copy run from a git clone updates with git pull.",
     },
     {
       id: "keys",
@@ -389,10 +425,10 @@ export const DOCS = {
       title: "Use the assistant",
       body: "Talk to it in plain words and it plans, writes, runs and checks code in your folder. Every request can be undone. It asks before running commands it does not recognise as safe, but an approved command runs with your own permissions, so read what it asks to run.",
       commands: [
-        { label: "In the browser", cmd: "pcode ide" },
+        { label: "In the browser", cmd: "compactcode" },
         { label: "In the terminal", cmd: "pcode" },
       ],
-      note: "Open the IDE from the link pcode ide prints. The link is the key to your local session, so do not share it. Files your .gitignore excludes are not covered by Undo.",
+      note: "compactcode opens the folder you are in. Open the IDE from the link it prints. The link is the key to your local session, so do not share it. Files your .gitignore excludes are not covered by Undo.",
     },
     {
       id: "cli",
@@ -503,14 +539,51 @@ export const IDE = {
     noPreview: "Preview is off in Private. The assistant gives you the command to start your app, and you open it yourself.",
     setup: "To block the network for commands, run: pcode private-setup",
   },
+  update: {
+    title: "Updates",
+    version: (v: string) => `v${v}`,
+    versionHint: "CompactCode version. Click to check for updates.",
+    available: (v: string) => `Update to ${v}`,
+    current: "This version",
+    latest: "Latest",
+    upToDate: "You have the latest version.",
+    newer: (v: string) => `CompactCode ${v} is available.`,
+    check: "Check for updates",
+    checking: "Checking",
+    checked: (when: string) => `Checked ${when}.`,
+    never: "Not checked yet.",
+    apply: "Update and restart",
+    applying: "Downloading and checking",
+    restarting: "Updating. CompactCode closes, installs the new version and opens again in a new tab. You can close this one.",
+    notes: "What's new",
+    release: "Release page",
+    later: "Later",
+    close: "Close",
+    auto: "Check once a day",
+    autoPrivate: "Off while Private is on. Check for updates still asks GitHub.",
+    autoEnv: "Off: COMPACTCODE_NO_UPDATE_CHECK is set.",
+    notify: "Desktop notification",
+    notifyHint: "When an update is found while this tab is in the background.",
+    notifyDenied: "Your browser blocks notifications for this page. Allow them in its site settings.",
+    notifyUnsupported: "This browser cannot show notifications.",
+    what: "The check asks GitHub for the latest release. It sends no code, keys or folder names.",
+    blocked: {
+      busy: "Wait for the running request to finish, then update.",
+      source: "This copy runs from a git clone. Update it with git pull.",
+    } as Record<string, string>,
+    banner: (v: string) => `CompactCode ${v} is available.`,
+    notifyTitle: (v: string) => `CompactCode ${v} is available`,
+    notifyBody: "Open CompactCode to see what's new and update.",
+    ago: (seconds: number) =>
+      seconds < 60 ? "just now" : seconds < 3600 ? `${Math.round(seconds / 60)} min ago` : seconds < 86400 ? `${Math.round(seconds / 3600)} h ago` : `${Math.round(seconds / 86400)} days ago`,
+  },
   noToken: {
     title: "Open this from your computer",
     body: "The IDE runs on your machine, because it reads your files and runs your code. Start it, and it opens here by itself.",
     home: "Back to the site",
-    commands: [
-      { label: "Install", cmd: "pip install -e \".[web]\"" },
-      { label: "Start", cmd: "pcode ide" },
-    ],
+    install: "New here? Install it with one line:",
+    start: "Already installed? Type this in your project's terminal:",
+    commands: [{ label: "Start", cmd: "compactcode" }],
   },
   setup: {
     keyTitle: "Connect a model",
@@ -786,6 +859,7 @@ export const IDE = {
       { name: "model", args: "[fast|quality id]", hint: "Show or change the models" },
       { name: "usage", hint: "Tokens used so far" },
       { name: "status", hint: "Folder, provider, models and mode" },
+      { name: "update", hint: "Check for a new version of CompactCode" },
       { name: "preview", hint: "Show the app that is running" },
       { name: "folder", hint: "Open another folder" },
       { name: "fix", args: "<what is broken>", needsArg: true, hint: "Fix failing tests on a copy, then choose to apply" },
