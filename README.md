@@ -583,6 +583,12 @@ call including the policy's own (which `EpisodeResult.total_tokens` leaves out),
 paired McNemar tests. GAIA and ToolBench are not run: both need tools the core agents lack, and GAIA is gated.
 Protocol, results and caveats: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
+**Result (Nebius, `nvidia/Nemotron-3_5-Lightning`, thinking off, 224 tasks, one seed, 0 provider errors):** the
+puppeteer answered 78.1% correctly, the fixed four-agent pipeline 76.8%, one chain-of-thought call 60.3%, one
+answer-only call 29.5%. The puppeteer beats both single calls (McNemar p < 0.001) but **not** the fixed pipeline
+(p 0.66), and uses about 52% more tokens than it (5,026 against 3,301 per task). The policy is untrained, so the gain
+comes from multi-step reasoning, not from learned orchestration.
+
 ```bash
 python benchmarks/reasoning/datasets.py --check
 python -m benchmarks.reasoning.run --out runs/reasoning-nebius-lightning.json --cache runs/cache/reasoning --resume

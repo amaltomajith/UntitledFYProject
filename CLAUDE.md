@@ -365,9 +365,13 @@ python -m puppeteer_code export-web   # real results to web/public/data; refuses
 - Smoke checks caught, before the result run: a CoT instruction in the system turn only was ignored (3-token
   replies), so one-call methods repeat it in the user turn; Unicode minus; bare-letter replies; GSM tolerance.
 - GAIA (gated, needs tools) and ToolBench (RapidAPI, GPT-4 judge, tools) were **not run**, and the page says why.
-- **The full run (`runs/reasoning-nebius-lightning.json`) was still going when this was written.** Partial numbers on
-  the tasks so far: puppeteer about 91% and fixed about 87% (not significant, McNemar p 0.25), CoT about 56%, direct
-  about 16%; puppeteer about 4,100 tokens per task against about 2,500 for fixed. Final numbers: `docs/BENCHMARKS.md`.
+- **Final result, complete (`runs/reasoning-nebius-lightning.json`, 896 rows, 0 provider errors, $0.25 in all):**
+  puppeteer 78.1%, fixed 76.8%, CoT 60.3%, direct 29.5%. Puppeteer beats both single calls (p < 0.001) but **not**
+  fixed (12 against 9 discordant tasks, McNemar p 0.66), and costs about 52% more tokens (5,026 against 3,301 per
+  task). The policy is untrained: it opened with Reasoning in 188 of 224 episodes and never chose the Terminator.
+  `--rescore` with the final checkers changed 0 rows.
+- **Do not quote the partial numbers** written here earlier (about 91% and 87%): they covered GSM8K and 27 GSM-Hard
+  tasks only.
 - Site: the Benchmarks page now has Reasoning, Build (the Nebius runs, missing before) and Fix groups; the old lead
   ("every method fixed every bug") and "cost pending" were wrong for Build and are gone. `export-web` writes
   `build.json` and `reasoning.json` and skips smoke runs. 52 new offline tests.
@@ -621,9 +625,7 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
 
 ## 9. Next steps (in order, updated 2026-11-05)
 
-First, if `docs/BENCHMARKS.md` says `PARTIAL`, finish the reasoning run with `--resume`, then regenerate the doc
-(`python -m benchmarks.reasoning.report --write docs/BENCHMARKS.md ...`, full command in that file §3.8), rerun
-`pcode export-web`, build and redeploy. Then: 3 seeds, thinking on, `nemotron-3-super-120b-a12b`.
+Reasoning benchmark, done 2026-11-05 (final numbers in §8 and `docs/BENCHMARKS.md`). Next for it: 3 seeds, thinking on, `nemotron-3-super-120b-a12b`.
 
 
 First, restart `pcode ide` so it runs the new code, and rerun the scientific calculator request on the real folder.

@@ -253,7 +253,7 @@ export const BENCH = {
   groups: {
     reasoning: {
       title: "Reasoning: the thesis core",
-      body: "The Puppeteer++ engine (core.Orchestrator) on fixed samples of four standard datasets, scored by an answer checker. Every method uses the same model and the same output cap, and every call is counted, the policy's included.",
+      body: "The Puppeteer++ engine (core.Orchestrator) on fixed samples of four standard datasets, scored by an answer checker. Every method uses the same model and the same output cap, and every call is counted, the policy's included. The puppeteer beat one-call answers by a wide margin, but not the fixed four-agent pipeline: that difference is not significant, and the puppeteer used more tokens. Its policy is untrained, so the gain comes from giving the model several steps, not yet from the policy's choices.",
     },
     build: {
       title: "Build from a prompt: PCodeBench-Build",
