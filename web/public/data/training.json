@@ -274,6 +274,60 @@
     "steps": 5,
     "return": 1.4173409289544248,
     "terminal_reward": 1.6
+   },
+   {
+    "episode": 30,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 2994,
+    "steps": 5,
+    "return": 1.4064133257606621,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 31,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 2998,
+    "steps": 5,
+    "return": 1.4064017647465898,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 32,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1468,
+    "steps": 5,
+    "return": 1.4172541438847674,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 33,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 2829,
+    "steps": 5,
+    "return": 1.406877698630957,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 34,
+    "task": "repo_text_truncate_fit",
+    "success": true,
+    "tokens": 1441,
+    "steps": 5,
+    "return": 1.4173489977963405,
+    "terminal_reward": 1.6
+   },
+   {
+    "episode": 35,
+    "task": "repo_iv_touching",
+    "success": true,
+    "tokens": 3135,
+    "steps": 5,
+    "return": 1.406036122685442,
+    "terminal_reward": 1.6
    }
   ]
  }

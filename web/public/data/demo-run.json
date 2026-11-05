@@ -1,5 +1,5 @@
 {
- "task": "mean() is wrong for even lists",
+ "task": "mean() gives the wrong answer",
  "repo": "calc_repo",
  "status": "completed",
  "success": true,
@@ -12,7 +12,7 @@
    ],
    "model": "none",
    "tokens": 0,
-   "seconds": 0.006,
+   "seconds": 0.007,
    "content": "calc.py:9-11  function mean(values)  score=3.0  (called by failing test_mean; matches task: mean)\ncalc.py:14-16  function describe(values)  score=3.0  (called by failing test_describe; matches task: mean)",
    "success": true,
    "error": "",
@@ -20,11 +20,11 @@
    "prompt_chars": 0,
    "pass_rate": 0.3333333333333333,
    "best_pass_rate": 0.3333333333333333,
-   "head": "ec15e4b046f34704dd5dd54fb1e1f1d2cc999736",
+   "head": "fb6132991c3fa06520911caf9a2592f86ca08754",
    "rollbacks": 0,
    "rollback_reason": null,
    "cost_usd": 0.0,
-   "reward": 1.843065529643419,
+   "reward": 1.842808414099984,
    "credit": 0.0
   },
   {
@@ -35,20 +35,20 @@
     "CoderAgent"
    ],
    "model": "openai/gpt-oss-120b",
-   "tokens": 948,
-   "seconds": 1.094,
+   "tokens": 965,
+   "seconds": 84.894,
    "content": "applied: calc.py (exact)",
    "success": true,
    "error": "",
    "verdict": null,
-   "prompt_chars": 2288,
+   "prompt_chars": 2287,
    "pass_rate": 0.3333333333333333,
    "best_pass_rate": 0.3333333333333333,
-   "head": "ec15e4b046f34704dd5dd54fb1e1f1d2cc999736",
+   "head": "fb6132991c3fa06520911caf9a2592f86ca08754",
    "rollbacks": 0,
    "rollback_reason": null,
    "cost_usd": null,
-   "reward": 1.9400689785720202,
+   "reward": 1.9397983306315623,
    "credit": 1.0
   },
   {
@@ -61,7 +61,7 @@
    ],
    "model": "none",
    "tokens": 0,
-   "seconds": 3.225,
+   "seconds": 2.439,
    "content": "CHECKPOINT: 3/3 passing (pass rate improved)",
    "success": true,
    "error": "",
@@ -73,11 +73,11 @@
    "prompt_chars": 0,
    "pass_rate": 1.0,
    "best_pass_rate": 1.0,
-   "head": "181dd04684f22837bfac8275a9482f5c9e8fe49d",
+   "head": "9e386aba88057db4b5ef11e8c0fb797b49de1ccc",
    "rollbacks": 0,
    "rollback_reason": null,
    "cost_usd": null,
-   "reward": 1.5178589376251401,
+   "reward": 1.5176098536359857,
    "credit": 0.0
   },
   {
@@ -89,20 +89,20 @@
     "ReviewerAgent"
    ],
    "model": "openai/gpt-oss-20b",
-   "tokens": 404,
-   "seconds": 0.762,
+   "tokens": 451,
+   "seconds": 1.382,
    "content": "Fixed mean() to use correct divisor, restoring accurate averages and passing all tests.",
    "success": true,
    "error": "",
    "verdict": null,
-   "prompt_chars": 558,
+   "prompt_chars": 798,
    "pass_rate": 1.0,
    "best_pass_rate": 1.0,
-   "head": "181dd04684f22837bfac8275a9482f5c9e8fe49d",
+   "head": "9e386aba88057db4b5ef11e8c0fb797b49de1ccc",
    "rollbacks": 0,
    "rollback_reason": null,
    "cost_usd": null,
-   "reward": 1.5977462501317266,
+   "reward": 1.5974840564589323,
    "credit": 0.0
   }
  ],
@@ -114,7 +114,7 @@
    "failing": [],
    "error": "",
    "returncode": 0,
-   "duration_s": 3.0368553000007523
+   "duration_s": 2.3427826999977697
   },
   "baseline_tests": {
    "passed": 1,
@@ -126,7 +126,7 @@
    ],
    "error": "",
    "returncode": 1,
-   "duration_s": 3.3751818999953684
+   "duration_s": 2.4792909000025247
   },
   "targets_fixed": [
    "tests.test_calc::test_describe",
@@ -135,10 +135,10 @@
   "targets_total": 2,
   "regressions": [],
   "integrity_violations": [],
-  "diff": "diff --git a/calc.py b/calc.py\nindex 3c37b16..ef02dd5 100644\n--- a/calc.py\n+++ b/calc.py\n@@ -8,7 +8,7 @@ def add(a, b):\n \n def mean(values):\n     \"\"\"Arithmetic mean of a non-empty list.\"\"\"\n-    return sum(values) / (len(values) - 1)\n+    return sum(values) / len(values)\n \n \n def describe(values):\n",
+  "diff": "diff --git a/calc.py b/calc.py\nindex 3c37b16..21437e6 100644\n--- a/calc.py\n+++ b/calc.py\n@@ -8,7 +8,10 @@ def add(a, b):\n \n def mean(values):\n     \"\"\"Arithmetic mean of a non-empty list.\"\"\"\n-    return sum(values) / (len(values) - 1)\n+    # The arithmetic mean is the sum of the values divided by the count of values.\n+    # The original implementation incorrectly subtracted 1 from the length,\n+    # which produced a larger result for any list with more than one element.\n+    return sum(values) / len(values)\n \n \n def describe(values):\n",
   "diff_stat": [
    1,
-   1,
+   4,
    1
   ],
   "lint_clean": true,
@@ -146,10 +146,10 @@
   "success": true
  },
  "rewards": {
-  "total_return": 1.843065529643419,
+  "total_return": 1.842808414099984,
   "terminal_reward": 1.6,
-  "total_step_cost": 0.0415076204013633,
-  "efficiency_score": 38.54713868269473,
+  "total_step_cost": 0.0444697386369178,
+  "efficiency_score": 35.979523357749514,
   "steps": 4,
   "per_step": [
    {
@@ -158,15 +158,15 @@
     "tokens_used": 0,
     "step_cost": 0.0,
     "step_score": 0.0,
-    "reward": 1.843065529643419
+    "reward": 1.842808414099984
    },
    {
     "step": 1,
     "agent_name": "CoderAgent",
-    "tokens_used": 948,
-    "step_cost": 0.018970121718628115,
+    "tokens_used": 965,
+    "step_cost": 0.019310303226240645,
     "step_score": 1.0,
-    "reward": 1.9400689785720202
+    "reward": 1.9397983306315623
    },
    {
     "step": 2,
@@ -174,15 +174,15 @@
     "tokens_used": 0,
     "step_cost": 0.0,
     "step_score": 0.0,
-    "reward": 1.5178589376251401
+    "reward": 1.5176098536359857
    },
    {
     "step": 3,
     "agent_name": "ConcluderAgent",
-    "tokens_used": 404,
-    "step_cost": 0.022537498682735187,
+    "tokens_used": 451,
+    "step_cost": 0.025159435410677153,
     "step_score": 0.0,
-    "reward": 1.5977462501317266
+    "reward": 1.5974840564589323
    }
   ],
   "policy_update": {}
@@ -191,22 +191,22 @@
   "by_model": {
    "openai/gpt-oss-120b": {
     "calls": 1,
-    "prompt_tokens": 790,
-    "completion_tokens": 158,
+    "prompt_tokens": 789,
+    "completion_tokens": 176,
     "cached_calls": 0
    },
    "openai/gpt-oss-20b": {
     "calls": 1,
-    "prompt_tokens": 275,
-    "completion_tokens": 129,
+    "prompt_tokens": 325,
+    "completion_tokens": 126,
     "cached_calls": 0
    }
   },
-  "total_tokens": 1352,
+  "total_tokens": 1416,
   "cost_usd": null
  },
  "policy": "heuristic",
- "wall_s": 12.59,
+ "wall_s": 94.37,
  "injections": [],
  "config": {
   "max_steps": 12,
@@ -220,5 +220,5 @@
   "budget_tokens": null
  },
  "provider": "groq",
- "id": "fix-20261030-184034"
+ "id": "fix-20261030-202245-2df0"
 }

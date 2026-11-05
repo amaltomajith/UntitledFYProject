@@ -291,8 +291,8 @@ export const BENCH = {
     paired: "Puppeteer against each method, same tasks",
     pairedColumns: { against: "Against", shared: "Shared tasks", ours: "Only puppeteer right", theirs: "Only it right", p: "Exact McNemar p" },
     tokensChart: "Mean tokens per task",
-    facts: (model: string, thinking: string, steps: number) =>
-      `model ${model} · thinking ${thinking} · up to ${steps} agent steps · untrained policy`,
+    facts: (thinking: string, steps: number) =>
+      `thinking ${thinking} · up to ${steps} agent steps · untrained policy`,
     notRunTitle: "Not run, and why",
     notRun: [
       "GAIA: gated on Hugging Face, so it needs a token and accepted terms, and its questions need web search and file tools that the core agents do not have. Not run, rather than run without tools and called a result.",
