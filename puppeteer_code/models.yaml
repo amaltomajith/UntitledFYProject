@@ -53,6 +53,7 @@ providers:
     keep_alive: 10m
     token_budget: 150000    # starting values: a local turn is slower and free
     max_seconds: 1800
+    reply_tokens: 10000     # for agents that write code; the context window still caps it
     tiers:
       fast: &local_models
         - qwen3.5:9b

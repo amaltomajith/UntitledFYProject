@@ -76,7 +76,7 @@ type Props = {
   readOnly: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
-  reveal?: { line: number } | null;
+  reveal?: { line: number; end?: number } | null;
 };
 
 export default function CodeEditor({ path, value, readOnly, onChange, onSave, reveal }: Props) {
@@ -133,8 +133,10 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave, re
   useEffect(() => {
     const editor = view.current;
     if (!editor || !reveal) return;
-    const line = editor.state.doc.line(Math.min(reveal.line, editor.state.doc.lines));
-    editor.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
+    const { doc } = editor.state;
+    const line = doc.line(Math.min(reveal.line, doc.lines));
+    const head = reveal.end ? doc.line(Math.min(reveal.end, doc.lines)).to : line.from;
+    editor.dispatch({ selection: { anchor: line.from, head }, effects: EditorView.scrollIntoView(line.from, { y: "center" }) });
     editor.focus();
   }, [reveal]);
 

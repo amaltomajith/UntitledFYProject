@@ -38,6 +38,8 @@ class RequestState:
     best: Optional[Check] = None
     check: Optional[Check] = None
     start_sha: str = ""
+    memory: str = ""                    # the graph's brief, when memory is on
+    related: Optional[list[str]] = None     # the graph's pick of files to show
     best_sha: str = ""
     failure: str = ""
     notes: list[str] = dataclasses.field(default_factory=list)

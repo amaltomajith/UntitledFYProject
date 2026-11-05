@@ -26,6 +26,7 @@ from typing import Callable, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from puppeteer_code.assistant.activity import TRANSIENT
 from puppeteer_code.assistant.effort import LEVELS
 from puppeteer_code.assistant.permissions import REFUSE, classify_command, is_protected
 from puppeteer_code.assistant.session import AssistantSession
@@ -41,12 +42,14 @@ from puppeteer_code.sandbox import DirectRunner
 from puppeteer_code.server import RunBusy, RunRequest
 from puppeteer_code.workspace import IGNORE_DIRS, scrub, scrub_obj, scrubbed_env
 
+MAX_FOLDERS = 6
 MAX_TREE = 2000
 MAX_FILE = 1_000_000
 MAX_LOG = 5000
 AUTH_TIMEOUT = 5
 AUTH_FAILED = 4401
 NO_TERMINAL = 4404
+NO_WORKSPACE = 4405
 GIT_TIMEOUT = 10
 MAX_GIT_FILES = 500
 HIT = re.compile(r"^(.+?):(\d+): (.*)$")
@@ -154,16 +157,41 @@ def git_status(project: Path) -> dict:
     return {"repo": True, "branch": branch, "files": files}
 
 
+class LocalGate:
+    """One model on one GPU: a Private request in any folder waits for the one before it."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.holder = ""
+
+    def enter(self, name: str, stop: threading.Event, waiting: Callable[[str], None]) -> bool:
+        while not self._lock.acquire(timeout=1):
+            if stop.is_set():
+                return False
+            waiting(self.holder)
+        self.holder = name
+        return True
+
+    def leave(self) -> None:
+        self.holder = ""
+        self._lock.release()
+
+
 class IdeHub:
     """One project and one session at a time, with any number of browser tabs watching."""
 
     def __init__(self, token: str, make_provider: Callable[[str], object], home: Optional[Path] = None,
                  provider: Optional[str] = None, mode: str = "ask", effort: str = "normal",
-                 private: bool = False):
+                 private: bool = False, gate: Optional[LocalGate] = None):
+        self.id = secrets.token_hex(4)
+        self.gate = gate or LocalGate()
+        self.spaces: Optional["Workspaces"] = None
+        self.queued = False
+        self.stop_waiting = threading.Event()
         self.token = token
         self.make_provider = make_provider
         self.home = Path(home or pcode_home())
-        self.provider_name = provider
+        self.provider_name = None if provider == "local" else provider  # `--private` says local; off needs a real one
         self.mode = mode
         self.effort = effort
         self.private = private
@@ -183,11 +211,12 @@ class IdeHub:
     def check(self, token: object) -> bool:
         return isinstance(token, str) and secrets.compare_digest(token.encode(), self.token.encode())
 
-    def publish(self, event: dict) -> None:
+    def publish(self, event: dict, keep: bool = True) -> None:
         with self.lock:
-            self.seq += 1
-            event = {**event, "seq": self.seq}
-            self.log = (self.log + [event])[-MAX_LOG:]
+            if keep:
+                self.seq += 1
+                event = {**event, "seq": self.seq}
+                self.log = (self.log + [event])[-MAX_LOG:]
             targets = list(self.subscribers)
         for loop, queue in targets:
             loop.call_soon_threadsafe(queue.put_nowait, event)
@@ -203,7 +232,7 @@ class IdeHub:
 
     @property
     def busy(self) -> bool:
-        return bool(self.session and self.session.busy) or self.running_command or self.fix_run is not None
+        return bool(self.session and self.session.busy) or self.running_command or self.fix_run is not None or self.queued
 
     def active_provider(self) -> Optional[str]:
         """Private beats every key that is set, and never falls back to one."""
@@ -215,6 +244,7 @@ class IdeHub:
             "keys": key_status(), "key_help": KEY_HELP, "provider": self.active_provider(),
             "project": str(session.project) if session else None,
             "session_id": session.id if session else None,
+            "session_title": session.display_title if session else "",
             "mode": session.tools.mode if session else self.mode,
             "effort": session.effort if session else self.effort,
             "pending_plan": bool(session and session.pending_plan),
@@ -234,6 +264,8 @@ class IdeHub:
         folder = Path(path).expanduser()
         if not folder.is_dir():
             raise HTTPException(404, {"code": "no_folder", "message": "That folder does not exist."})
+        if self.spaces and self.spaces.holding(folder) not in (None, self):
+            raise HTTPException(409, {"code": "already_open", "message": "That folder is already open in another tab."})
         previous = self.private
         self.private = self.keep_private or is_private(folder, self.home)
         try:
@@ -253,7 +285,7 @@ class IdeHub:
             models = self.make_provider(provider)
         except PrivacyError as e:
             raise HTTPException(409, {"code": "no_local", "message": str(e)})
-        return AssistantSession(folder, models, mode=self.mode, home=self.home, effort=self.effort)
+        return AssistantSession(folder, models, mode=self.mode, home=self.home, effort=self.effort, memory=True, live=True)
 
     def _adopt(self, session: AssistantSession) -> None:
         if self.session:
@@ -264,6 +296,8 @@ class IdeHub:
             remember_private(session.project, True, self.home)
         self.log = []
         self.publish({"type": "opened", "project": str(session.project)})
+        if self.spaces:
+            self.spaces.remember(session.project)
 
     def set_private(self, on: bool) -> dict:
         """A new session, with no history: a conversation does not cross between cloud and Private."""
@@ -308,9 +342,10 @@ class IdeHub:
             if message.get("mode") == "fix" and session.tools.mode == "plan":
                 self.publish({"type": "error", "message": "Fix mode changes code, so it is off in plan mode."})
                 return
-            self.publish({"type": "user", "text": text})
-            if message.get("mode") == "fix":
-                threading.Thread(target=self._fix, args=(session, text), daemon=True).start()
+            fix = message.get("mode") == "fix"
+            self.publish({"type": "user", "text": text, "turn": None if fix else len(session.turns) + 1})
+            if fix:
+                threading.Thread(target=self._turn, args=(lambda: self._fix(session, text),), daemon=True).start()
                 return
             effort = message.get("effort") if message.get("effort") in LEVELS else None
             threading.Thread(target=self._run, args=(session.send(text, effort=effort),), daemon=True).start()
@@ -319,13 +354,43 @@ class IdeHub:
             if session.answer(request_id, approved):
                 self.publish({"type": "approval_answered", "id": request_id, "approved": approved})
         elif kind == "cancel":
+            self.stop_waiting.set()
             session.cancel()
             if self.fix_run:
                 self.fix_run.cancel.set()
 
     def _run(self, stream) -> None:
-        for event in stream:
-            self.publish(event)
+        def work() -> None:
+            for event in stream:
+                self.publish(event, keep=event["type"] not in TRANSIENT)    # a long run must not push real events out
+        self._turn(work)
+
+    def _turn(self, work: Callable[[], None]) -> None:
+        """Runs `work`, once the GPU is free if this folder is Private."""
+        private = self.private
+        if private and not self._wait_for_gate():
+            return
+        try:
+            work()
+        finally:
+            if private:
+                self.gate.leave()
+
+    def _wait_for_gate(self) -> bool:
+        started = time.monotonic()
+        name = str(self.session.project.name) if self.session else ""
+        self.stop_waiting.clear()
+        self.queued = True
+
+        def waiting(holder: str) -> None:
+            self.publish({"type": "activity", "agent": "", "label": "", "phase": "queued", "path": holder,
+                          "seconds": int(time.monotonic() - started), "silent": 0, "rate": None}, keep=False)
+        entered = self.gate.enter(name, self.stop_waiting, waiting)
+        self.queued = False
+        if not entered:
+            self.publish({"type": "done", "status": "cancelled", "reason": "Stopped by you.", "files": [], "verified": False,
+                          "can_undo": bool(self.session and self.session.undo_stack)})
+        return entered
 
     def approve_plan(self) -> dict:
         session = self.need_session()
@@ -336,7 +401,7 @@ class IdeHub:
         except ValueError as e:
             raise HTTPException(409, {"code": "no_plan", "message": str(e)})
         self.mode = session.tools.mode
-        self.publish({"type": "user", "text": "Go ahead with the plan."})
+        self.publish({"type": "user", "text": "Go ahead with the plan.", "turn": len(session.turns) + 1})
         threading.Thread(target=self._run, args=(stream,), daemon=True).start()
         return self.state()
 
@@ -440,23 +505,158 @@ class IdeHub:
         self.terminals.close_all()
         if self.session:
             self.session.close()
+        if self.spaces:
+            self.spaces.close_others(self)
 
 
-def register_ide(app: FastAPI, hub: IdeHub) -> None:
-    hub.manager = app.state.manager
+class Workspaces:
+    """The folders open in one IDE: a hub each, one token. Nothing crosses between them but the gate."""
+
+    def __init__(self, first: IdeHub):
+        self.hubs: dict[str, IdeHub] = {first.id: first}
+        self.lock = threading.Lock()
+        self.path = first.home / "ide-workspaces.json"
+        self.saved = self._read()
+        first.spaces = self
+        if first.session:
+            self.remember(first.session.project)
+
+    @property
+    def first(self) -> IdeHub:
+        return next(iter(self.hubs.values()))
+
+    def _read(self) -> list[str]:
+        try:
+            folders = json.loads(self.path.read_text(encoding="utf-8")).get("folders", [])
+        except (OSError, ValueError, AttributeError):
+            return []
+        return [str(f) for f in folders if isinstance(f, str) and Path(f).is_dir()][:MAX_FOLDERS]
+
+    def _write(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps({"folders": self.saved}), encoding="utf-8")
+        except OSError:
+            pass                    # the tabs are simply not back next time
+
+    @staticmethod
+    def _same(folder: str | Path) -> str:
+        return os.path.normcase(str(Path(folder).expanduser().resolve()))
+
+    def holding(self, folder: str | Path) -> Optional[IdeHub]:
+        wanted = self._same(folder)
+        return next((hub for hub in self.hubs.values() if hub.session and self._same(hub.session.project) == wanted), None)
+
+    def remember(self, folder: Path) -> None:
+        with self.lock:
+            if self._same(folder) not in map(self._same, self.saved):
+                self.saved = [*self.saved, str(folder)][-MAX_FOLDERS:]
+            self._write()
+
+    def forget(self, folder: str) -> None:
+        with self.lock:
+            self.saved = [f for f in self.saved if self._same(f) != self._same(folder)]
+            self._write()
+
+    def add(self) -> IdeHub:
+        with self.lock:
+            if len(self.hubs) >= MAX_FOLDERS:
+                raise HTTPException(409, {"code": "too_many", "message": f"Close a folder first. {MAX_FOLDERS} can be open."})
+            model = self.first
+            hub = IdeHub(model.token, model.make_provider, model.home, provider=model.provider_name, mode=model.mode,
+                         effort=model.effort, private=model.keep_private, gate=model.gate)
+            hub.manager, hub.spaces = model.manager, self
+            self.hubs[hub.id] = hub
+            return hub
+
+    def remove(self, hub: IdeHub) -> None:
+        with self.lock:
+            del self.hubs[hub.id]
+            hub.spaces = None
+        if hub.session:
+            self.forget(str(hub.session.project))
+        hub.close()
+        hub.session, hub.spaces = None, self    # shutdown closes the launch's hub, even after its tab has gone
+        if not self.hubs:
+            with self.lock:
+                self.hubs[hub.id] = fresh = IdeHub(hub.token, hub.make_provider, hub.home, provider=hub.provider_name,
+                                                   mode=hub.mode, effort=hub.effort, gate=hub.gate)
+                fresh.id, fresh.manager, fresh.spaces = hub.id, hub.manager, self
+
+    def close_others(self, closing: IdeHub) -> None:
+        for hub in [h for h in self.hubs.values() if h is not closing]:
+            hub.spaces = None
+            hub.close()
+
+    def public(self) -> dict:
+        folders = [{"id": hub.id, "project": str(hub.session.project) if hub.session else None} for hub in self.hubs.values()]
+        return {"folders": folders, "saved": [f for f in self.saved if self.holding(f) is None]}
+
+
+class FolderRequest(BaseModel):
+    path: Optional[str] = None
+
+
+def register_ide(app: FastAPI, first: IdeHub) -> None:
+    first.manager = app.state.manager
+    spaces = Workspaces(first)
 
     def auth(x_pcode_token: Optional[str] = Header(default=None)) -> None:
-        if not hub.check(x_pcode_token):
+        if not spaces.first.check(x_pcode_token):
             raise HTTPException(401, {"code": "bad_token", "message": "Open the link printed by pcode ide."})
+
+    def current(x_pcode_workspace: Optional[str] = Header(default=None)) -> IdeHub:
+        """Each folder's tab names its own hub. A client that names none means the first."""
+        if not x_pcode_workspace:
+            return spaces.first
+        hub = spaces.hubs.get(x_pcode_workspace)
+        if hub is None:
+            raise HTTPException(404, {"code": "no_workspace", "message": "That folder is no longer open."})
+        return hub
 
     guard = [Depends(auth)]
 
+    @app.get("/api/ide/workspaces", dependencies=guard)
+    def workspaces():
+        return spaces.public()
+
+    @app.post("/api/ide/workspaces", dependencies=guard, status_code=201)
+    def open_workspace(body: FolderRequest):
+        held = spaces.holding(body.path) if body.path else None
+        if held:
+            return {"id": held.id, **spaces.public()}
+        hub = spaces.add()
+        if body.path:
+            try:
+                hub.open(body.path)
+            except HTTPException as e:
+                spaces.remove(hub)
+                if e.status_code == 404:        # a missing key is no reason to lose the tab
+                    spaces.forget(body.path)
+                raise
+        return {"id": hub.id, **spaces.public()}
+
+    @app.delete("/api/ide/workspaces/{workspace}", dependencies=guard)
+    def close_workspace(workspace: str):
+        hub = spaces.hubs.get(workspace)
+        if hub is None:
+            raise HTTPException(404, {"code": "no_workspace", "message": "That folder is no longer open."})
+        if hub.busy:
+            raise HTTPException(409, {"code": "busy", "message": "Stop the request in this folder first."})
+        spaces.remove(hub)
+        return spaces.public()
+
+    @app.post("/api/ide/workspaces/forget", dependencies=guard)
+    def forget_workspace(body: FolderRequest):
+        spaces.forget(body.path or "")
+        return spaces.public()
+
     @app.get("/api/ide/state", dependencies=guard)
-    def state():
+    def state(hub: IdeHub = Depends(current)):
         return hub.state()
 
     @app.post("/api/ide/keys", dependencies=guard)
-    def keys(body: KeyRequest):
+    def keys(body: KeyRequest, hub: IdeHub = Depends(current)):
         if body.provider not in KEY_HELP:
             raise HTTPException(422, {"code": "bad_provider", "message": "Unknown provider."})
         try:
@@ -482,11 +682,11 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return {"path": str(folder), "parent": parent or "", "folders": [str(folder / n) for n in names]}
 
     @app.post("/api/ide/open", dependencies=guard)
-    def open_project(body: OpenRequest):
+    def open_project(body: OpenRequest, hub: IdeHub = Depends(current)):
         return hub.open(body.path)
 
     @app.post("/api/ide/create", dependencies=guard)
-    def create(body: CreateRequest):
+    def create(body: CreateRequest, hub: IdeHub = Depends(current)):
         if not re.fullmatch(r"[\w .-]+", body.name) or body.name.strip(". ") == "":
             raise HTTPException(422, {"code": "bad_name", "message": "Use letters, numbers, spaces, dots or dashes."})
         folder = Path(body.parent).expanduser() / body.name
@@ -496,7 +696,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return hub.open(str(folder))
 
     @app.get("/api/ide/tree", dependencies=guard)
-    def tree():
+    def tree(hub: IdeHub = Depends(current)):
         session = hub.need_session()
         files = []
         for rel in session.tools._walk(session.project):
@@ -506,7 +706,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return {"root": str(session.project), "files": files, "truncated": len(files) >= MAX_TREE}
 
     @app.get("/api/ide/file", dependencies=guard)
-    def read_file(path: str):
+    def read_file(path: str, hub: IdeHub = Depends(current)):
         target = hub._resolve(path)
         if not target.is_file():
             raise HTTPException(404, {"code": "no_file", "message": "That file does not exist."})
@@ -519,7 +719,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
             return {"path": path, "content": None, "reason": "binary", "size": size}
 
     @app.put("/api/ide/file", dependencies=guard)
-    def write_file(body: FileRequest):
+    def write_file(body: FileRequest, hub: IdeHub = Depends(current)):
         target = hub._resolve(body.path)
         if hub.busy:
             raise HTTPException(409, {"code": "busy", "message": "The assistant is working. Try again when it stops."})
@@ -528,18 +728,18 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return {"saved": True}
 
     @app.get("/api/ide/search", dependencies=guard)
-    def search(q: str = Query(min_length=1, max_length=200)):
+    def search(q: str = Query(min_length=1, max_length=200), hub: IdeHub = Depends(current)):
         hits = hub.need_session().tools._grep(f"(?i){re.escape(q)}")
         rows = [m.groups() for m in map(HIT.match, hits.splitlines()) if m]
         return scrub_obj({"hits": [{"path": path, "line": int(line), "text": text} for path, line, text in rows],
                           "truncated": hits.endswith("(more matches not shown)")})
 
     @app.get("/api/ide/git", dependencies=guard)
-    def git():
+    def git(hub: IdeHub = Depends(current)):
         return git_status(hub.need_session().project)
 
     @app.get("/api/ide/changes", dependencies=guard)
-    def changes():
+    def changes(hub: IdeHub = Depends(current)):
         session = hub.need_session()
         if not session.undo_stack:
             return {"request": None, "files": []}
@@ -552,7 +752,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return scrub_obj({"request": entry["request"], "files": files})
 
     @app.post("/api/ide/undo", dependencies=guard)
-    def undo():
+    def undo(hub: IdeHub = Depends(current)):
         try:
             result = hub.need_session().undo()
         except RuntimeError as e:
@@ -561,7 +761,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return {**result, "can_undo": bool(hub.session.undo_stack)}
 
     @app.post("/api/ide/mode", dependencies=guard)
-    def mode(body: ModeRequest):
+    def mode(body: ModeRequest, hub: IdeHub = Depends(current)):
         try:
             hub.need_session().set_mode(body.mode)
         except ValueError as e:
@@ -572,7 +772,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return hub.state()
 
     @app.post("/api/ide/effort", dependencies=guard)
-    def effort(body: EffortRequest):
+    def effort(body: EffortRequest, hub: IdeHub = Depends(current)):
         try:
             hub.need_session().set_effort(body.level)
         except ValueError as e:
@@ -581,15 +781,15 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return hub.state()
 
     @app.post("/api/ide/private", dependencies=guard)
-    def private(body: PrivateRequest):
+    def private(body: PrivateRequest, hub: IdeHub = Depends(current)):
         return hub.set_private(body.on)
 
     @app.post("/api/ide/plan/approve", dependencies=guard, status_code=202)
-    def approve_plan():
+    def approve_plan(hub: IdeHub = Depends(current)):
         return hub.approve_plan()
 
     @app.post("/api/ide/model", dependencies=guard)
-    def model(body: ModelRequest):
+    def model(body: ModelRequest, hub: IdeHub = Depends(current)):
         session = hub.need_session()
         if hub.busy:
             raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
@@ -599,7 +799,7 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return hub.state()
 
     @app.post("/api/ide/clear", dependencies=guard)
-    def clear():
+    def clear(hub: IdeHub = Depends(current)):
         session = hub.need_session()
         if hub.busy:
             raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
@@ -608,44 +808,77 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         return hub.state()
 
     @app.get("/api/ide/sessions", dependencies=guard)
-    def sessions():
-        return {"sessions": AssistantSession.list_sessions(hub.need_session().project, hub.home)}
+    def sessions(hub: IdeHub = Depends(current)):
+        session = hub.need_session()
+        return {"sessions": AssistantSession.list_sessions(session.project, hub.home, session.private)}
 
-    @app.post("/api/ide/resume", dependencies=guard)
-    def resume(body: ResumeRequest):
+    def edit_session(hub: IdeHub, change: Callable[[AssistantSession], None]) -> AssistantSession:
         session = hub.need_session()
         if hub.busy:
             raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
         try:
-            session.adopt(body.id)
+            change(session)
         except OSError:
             raise HTTPException(404, {"code": "no_session", "message": "That conversation is gone."})
         except ValueError as e:
             raise HTTPException(409, {"code": "private_session", "message": str(e)})
-        hub.publish({"type": "resumed", "history": session.history})
+        return session
+
+    @app.post("/api/ide/resume", dependencies=guard)
+    def resume(body: ResumeRequest, hub: IdeHub = Depends(current)):
+        session = edit_session(hub, lambda s: s.adopt(body.id))
+        hub.publish({"type": "resumed", "history": session.history, "turns": session.turns})
         return {"history": session.history}
 
+    @app.post("/api/ide/sessions/{session_id}/rename", dependencies=guard)
+    def rename_session(session_id: str, body: RenameRequest, hub: IdeHub = Depends(current)):
+        edit_session(hub, lambda s: s.rename(session_id, body.name))
+        return hub.state()
+
+    @app.get("/api/ide/graph", dependencies=guard)
+    def graph(scope: str = Query("session", pattern="^(session|project)$"), q: str = Query("", max_length=200),
+              types: str = Query("", max_length=60), limit: int = Query(300, ge=1, le=2000), hub: IdeHub = Depends(current)):
+        found = hub.need_session().graph_view(scope, q, [kind for kind in types.split(",") if kind], limit)
+        if found is None:
+            raise HTTPException(503, {"code": "memory_off", "message": "Memory is not available right now."})
+        return found
+
+    @app.get("/api/ide/graph/node/{node_id:path}", dependencies=guard)
+    def graph_node(node_id: str, hub: IdeHub = Depends(current)):
+        node = hub.need_session().graph_node(node_id)
+        if node is None:
+            raise HTTPException(404, {"code": "no_node", "message": "That item is no longer in the graph."})
+        return node
+
+    @app.delete("/api/ide/sessions/{session_id}", dependencies=guard)
+    def delete_session(session_id: str, hub: IdeHub = Depends(current)):
+        active = hub.need_session().id == session_id
+        edit_session(hub, lambda s: s.delete(session_id))
+        if active:
+            hub.publish({"type": "cleared"})
+        return hub.state()
+
     @app.post("/api/ide/fix/apply", dependencies=guard)
-    def apply_fix(body: ApplyFixRequest):
+    def apply_fix(body: ApplyFixRequest, hub: IdeHub = Depends(current)):
         return hub.apply_fix(body.run_id)
 
     @app.post("/api/ide/command", dependencies=guard, status_code=202)
-    def command(body: CommandRequest):
+    def command(body: CommandRequest, hub: IdeHub = Depends(current)):
         hub.run_command(body.command)
         return {"started": True}
 
     @app.get("/api/ide/shells", dependencies=guard)
-    def shells():
+    def shells(hub: IdeHub = Depends(current)):
         missing = pty_missing()
         return {"shells": [] if missing else [s.public() for s in hub.terminals.shells()],
                 "install": missing, "windows_build": windows_build()}
 
     @app.get("/api/ide/terminals", dependencies=guard)
-    def terminals():
+    def terminals(hub: IdeHub = Depends(current)):
         return {"terminals": hub.terminals.list()}
 
     @app.post("/api/ide/terminals", dependencies=guard, status_code=201)
-    def new_terminal(body: TerminalRequest):
+    def new_terminal(body: TerminalRequest, hub: IdeHub = Depends(current)):
         session = hub.need_session()
         missing = pty_missing()
         if missing:
@@ -660,13 +893,13 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
             raise HTTPException(500, {"code": "no_start", "message": f"That shell would not start: {scrub(str(e))[:200]}"})
 
     @app.delete("/api/ide/terminals/{terminal_id}", dependencies=guard)
-    def kill_terminal(terminal_id: str):
+    def kill_terminal(terminal_id: str, hub: IdeHub = Depends(current)):
         if not hub.terminals.remove(terminal_id):
             raise HTTPException(404, {"code": "no_terminal", "message": "That terminal is gone."})
         return {"killed": True}
 
     @app.post("/api/ide/terminals/{terminal_id}/rename", dependencies=guard)
-    def rename_terminal(terminal_id: str, body: RenameRequest):
+    def rename_terminal(terminal_id: str, body: RenameRequest, hub: IdeHub = Depends(current)):
         terminal = hub.terminals.get(terminal_id)
         if terminal is None:
             raise HTTPException(404, {"code": "no_terminal", "message": "That terminal is gone."})
@@ -681,17 +914,21 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
         except (asyncio.TimeoutError, ValueError, WebSocketDisconnect, KeyError):
             await ws.close(AUTH_FAILED)
             return None
-        if not isinstance(first, dict) or not hub.check(first.get("token")):
+        if not isinstance(first, dict) or not spaces.first.check(first.get("token")):
             await ws.close(AUTH_FAILED)
             return None
         return first
+
+    def named(message: dict) -> Optional[IdeHub]:
+        return spaces.hubs.get(message.get("workspace")) if message.get("workspace") else spaces.first
 
     @app.websocket("/api/ide/terminals/{terminal_id}/ws")
     async def terminal_socket(ws: WebSocket, terminal_id: str):
         first = await signed_in(ws)
         if first is None:
             return
-        terminal = hub.terminals.get(terminal_id)
+        hub = named(first)
+        terminal = hub.terminals.get(terminal_id) if hub else None
         if terminal is None:
             await ws.close(NO_TERMINAL)
             return
@@ -701,6 +938,10 @@ def register_ide(app: FastAPI, hub: IdeHub) -> None:
     async def socket(ws: WebSocket):
         first = await signed_in(ws)
         if first is None:
+            return
+        hub = named(first)
+        if hub is None:
+            await ws.close(NO_WORKSPACE)
             return
         queue: asyncio.Queue = asyncio.Queue()
         backlog = hub.subscribe(asyncio.get_running_loop(), queue, int(first.get("since") or 0))

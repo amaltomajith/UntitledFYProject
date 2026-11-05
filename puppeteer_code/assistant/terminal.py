@@ -131,6 +131,9 @@ class Terminal:
         self._reply += event["text"]
         self._live.update(Markdown(self._reply), refresh=True)
 
+    def _on_memory(self, event: dict) -> None:
+        self.console.print(f"[dim]{escape(event['text'])}[/dim]")
+
     def _on_notice(self, event: dict) -> None:
         self.console.print(f"[yellow]{escape(event['text'])}[/yellow]")
 
@@ -289,7 +292,7 @@ class Terminal:
         self.console.print("Started a new conversation. Undo still works.")
 
     def _cmd_resume(self, args) -> None:
-        rows = AssistantSession.list_sessions(self.session.project, self.session.home)
+        rows = AssistantSession.list_sessions(self.session.project, self.session.home, self.session.private)
         if not args:
             if not rows:
                 self.console.print("No earlier conversations in this folder.")
@@ -337,10 +340,13 @@ def run_chat(args) -> int:
     models = ProviderSession(provider, cache_dir=args.cache)
     if args.resume:
         try:
-            session = AssistantSession.resume(args.resume, models, mode=args.mode, effort=args.effort)
+            session = AssistantSession.resume(args.resume, models, mode=args.mode, effort=args.effort, memory=True)
+        except FileNotFoundError:
+            print("No such conversation.")
+            return 1
         except ValueError as e:
             print(e)
             return 1
     else:
-        session = AssistantSession(args.folder, models, mode=args.mode, effort=args.effort)
+        session = AssistantSession(args.folder, models, mode=args.mode, effort=args.effort, memory=True)
     return Terminal(session).run()

@@ -25,6 +25,9 @@ truststore>=0.9      # verify TLS against the OS certificate store (corporate / 
 psutil>=5.9          # IDE terminals: stop a shell and everything it started
 pywinpty>=3.1; sys_platform == "win32"     # IDE terminals on Windows (ConPTY)
 ptyprocess>=0.7; sys_platform != "win32"   # IDE terminals on Linux and macOS
+tree-sitter>=0.25              # memory graph: JavaScript and TypeScript symbols (parsing only)
+tree-sitter-javascript>=0.25
+tree-sitter-typescript>=0.23
 # Optional: ruff (real linting for LinterAgent; falls back to a syntax check)
 # Optional: TAVILY_API_KEY in .env enables web docs search (plain REST, no SDK)
 

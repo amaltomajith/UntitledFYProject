@@ -66,6 +66,11 @@ class Snapshots:
         out = self._git("diff", "--cached", "--name-only", "--no-renames", "-z", sha)
         return sorted(f for f in out.split("\0") if f)
 
+    def tracked(self) -> list[str]:
+        """Every file a snapshot covers: the project's own .gitignore already applied."""
+        self._git("add", "-A")
+        return sorted(f for f in self._git("ls-files", "-z").split("\0") if f)
+
     def diff(self, sha: str, files: Optional[Iterable[str]] = None) -> str:
         self._git("add", "-A")
         paths = list(files) if files is not None else []

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { IDE } from "@/lib/content";
-import { IdeError, ideCall, type View } from "@/lib/ide";
+import { IdeError, ideCall, type View, type IdeClient } from "@/lib/ide";
 import { Codicon } from "./Codicon";
 import { FileIcon } from "./FileIcon";
 
@@ -17,7 +17,9 @@ export const SIDE_VIEWS: { id: SideView; icon: string }[] = [
   { id: "tests", icon: "beaker" },
 ];
 
-export function ActivityBar({ view, open, onPick }: { view: SideView; open: boolean; onPick: (view: SideView) => void }) {
+type BarProps = { view: SideView; open: boolean; onPick: (view: SideView) => void; onGraph: () => void };
+
+export function ActivityBar({ view, open, onPick, onGraph }: BarProps) {
   return (
     <nav className="ide-activity" aria-label={IDE.activity.label}>
       {SIDE_VIEWS.map(({ id, icon }) => (
@@ -32,6 +34,9 @@ export function ActivityBar({ view, open, onPick }: { view: SideView; open: bool
           <Codicon name={icon} />
         </button>
       ))}
+      <button type="button" aria-label={IDE.graph.open} data-tip={IDE.graph.title} onClick={onGraph}>
+        <Codicon name="type-hierarchy" />
+      </button>
     </nav>
   );
 }
@@ -39,7 +44,7 @@ export function ActivityBar({ view, open, onPick }: { view: SideView; open: bool
 type Hit = { path: string; line: number; text: string };
 const leaf = (path: string) => path.split("/").pop() ?? path;
 
-export function SearchView({ token, onOpen }: { token: string; onOpen: (path: string, line: number) => void }) {
+export function SearchView({ client, onOpen }: { client: IdeClient; onOpen: (path: string, line: number) => void }) {
   const S = IDE.search;
   const [text, setText] = useState("");
   const [reply, setReply] = useState<{ q: string; hits: Hit[]; truncated: boolean } | null>(null);
@@ -54,7 +59,7 @@ export function SearchView({ token, onOpen }: { token: string; onOpen: (path: st
     let stale = false;
     const timer = window.setTimeout(async () => {
       try {
-        const found = await ideCall<{ hits: Hit[]; truncated: boolean }>(token, `search?q=${encodeURIComponent(q)}`);
+        const found = await ideCall<{ hits: Hit[]; truncated: boolean }>(client, `search?q=${encodeURIComponent(q)}`);
         if (stale) return;
         setReply({ q, ...found });
         setError(null);
@@ -66,7 +71,7 @@ export function SearchView({ token, onOpen }: { token: string; onOpen: (path: st
       stale = true;
       window.clearTimeout(timer);
     };
-  }, [q, token]);
+  }, [q, client]);
 
   const files = [...new Set(reply?.hits.map((hit) => hit.path))];
 
@@ -116,19 +121,19 @@ export function SearchView({ token, onOpen }: { token: string; onOpen: (path: st
 
 type GitReply = { repo: boolean; branch: string; files: { path: string; status: string }[] };
 
-export function GitView({ token, tick, onOpen }: { token: string; tick: number; onOpen: (path: string) => void }) {
+export function GitView({ client, tick, onOpen }: { client: IdeClient; tick: number; onOpen: (path: string) => void }) {
   const G = IDE.git;
   const [git, setGit] = useState<GitReply | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setGit(await ideCall<GitReply>(token, "git"));
+      setGit(await ideCall<GitReply>(client, "git"));
       setError(null);
     } catch (e) {
       setError(e instanceof IdeError ? e.message : IDE.setup.failed);
     }
-  }, [token]);
+  }, [client]);
 
   useEffect(() => {
     void load();

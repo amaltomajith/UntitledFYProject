@@ -6,6 +6,7 @@
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
 import { apiBase } from "@/lib/api";
+import type { IdeClient } from "@/lib/ide";
 
 const RETRY_MS = 1500;
 const ACK_EVERY = 5000;
@@ -34,6 +35,7 @@ const ANSI = {
 
 type Entry = {
   id: string;
+  workspace: string;
   term: Terminal;
   fit: FitAddon;
   host: HTMLDivElement;
@@ -47,14 +49,14 @@ type Entry = {
   rendered: boolean;
 };
 
-type Config = { token: string; windowsBuild: number | null; onExit: (id: string, code: number | null) => void };
+type Config = { client: IdeClient; windowsBuild: number | null; onExit: (id: string, code: number | null) => void };
 
-let config: Config | null = null;
+const configs = new Map<string, Config>();  // one per open folder, so a tab never reads another's
 const entries = new Map<string, Promise<Entry>>();
 const encoder = new TextEncoder();
 
 export const configure = (next: Config) => {
-  config = next;
+  configs.set(next.client.workspace, next);
 };
 
 const addons = () =>
@@ -120,18 +122,19 @@ function control(entry: Entry, text: string) {
     sendSize(entry);
   } else if (message.t === "exit") {
     entry.stopped = true;
-    config?.onExit(entry.id, message.code);
+    configs.get(entry.workspace)?.onExit(entry.id, message.code);
   }
 }
 
 function connect(entry: Entry) {
+  const config = configs.get(entry.workspace);
   if (!config || entry.stopped) return;
-  const { token } = config;
+  const { token, workspace } = config.client;
   const base = apiBase() || window.location.origin;
   const socket = new WebSocket(`${base.replace(/^http/, "ws")}/api/ide/terminals/${entry.id}/ws`);
   socket.binaryType = "arraybuffer";
   entry.socket = socket;
-  socket.onopen = () => socket.send(JSON.stringify({ token, offset: entry.offset }));
+  socket.onopen = () => socket.send(JSON.stringify({ token, workspace, offset: entry.offset }));
   socket.onmessage = (message) => {
     if (typeof message.data === "string") control(entry, message.data);
     else received(entry, message.data);
@@ -142,9 +145,10 @@ function connect(entry: Entry) {
   };
 }
 
-async function create(id: string): Promise<Entry> {
+async function create(id: string, workspace: string): Promise<Entry> {
   const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { Unicode11Addon }] = await addons();
   const fonts = getComputedStyle(document.documentElement).getPropertyValue("--f-mono");
+  const windowsBuild = configs.get(workspace)?.windowsBuild;
   const term = new Terminal({
     allowProposedApi: true,
     cursorBlink: true,
@@ -153,7 +157,7 @@ async function create(id: string): Promise<Entry> {
     lineHeight: 1.2,
     scrollback: SCROLLBACK,
     theme: theme(),
-    windowsPty: config?.windowsBuild ? { backend: "conpty", buildNumber: config.windowsBuild } : undefined,
+    windowsPty: windowsBuild ? { backend: "conpty", buildNumber: windowsBuild } : undefined,
   });
   const fitter = new FitAddon();
   term.loadAddon(fitter);
@@ -164,7 +168,7 @@ async function create(id: string): Promise<Entry> {
   const host = document.createElement("div");
   host.className = "ide-xterm";
   const entry: Entry = {
-    id, term, fit: fitter, host, socket: null, offset: 0, unacked: 0, replay: 0, muted: false, stopped: false, rendered: false,
+    id, workspace, term, fit: fitter, host, socket: null, offset: 0, unacked: 0, replay: 0, muted: false, stopped: false, rendered: false,
   };
 
   const send = (bytes: Uint8Array) => {
@@ -188,10 +192,10 @@ async function create(id: string): Promise<Entry> {
   return entry;
 }
 
-const open = (id: string) => {
+const open = (id: string, workspace: string) => {
   let entry = entries.get(id);
   if (!entry) {
-    entry = create(id);
+    entry = create(id, workspace);
     entries.set(id, entry);
   }
   return entry;
@@ -211,12 +215,12 @@ async function render(entry: Entry) {
 }
 
 /** Puts the terminal in `slot` and returns what undoes that. The terminal itself keeps running. */
-export function mount(id: string, slot: HTMLElement, focus: boolean) {
+export function mount(id: string, workspace: string, slot: HTMLElement, focus: boolean) {
   let gone = false;
   let observer: ResizeObserver | null = null;
   let frame = 0;
 
-  void open(id).then(async (entry) => {
+  void open(id, workspace).then(async (entry) => {
     if (gone) return;
     slot.appendChild(entry.host);
     if (!entry.rendered) await render(entry);
@@ -235,7 +239,7 @@ export function mount(id: string, slot: HTMLElement, focus: boolean) {
     gone = true;
     observer?.disconnect();
     cancelAnimationFrame(frame);
-    void open(id).then((entry) => {
+    void entries.get(id)?.then((entry) => {
       if (entry.host.parentElement === slot) entry.host.remove();
     });
   };
@@ -261,4 +265,8 @@ export async function dispose(id: string) {
   entry.host.remove();
 }
 
-export const disposeAll = () => Promise.all([...entries.keys()].map(dispose));
+/** Only this folder's terminals: the other tabs keep theirs. */
+export async function disposeAll(workspace: string) {
+  const held = await Promise.all([...entries.values()]);
+  await Promise.all(held.filter((entry) => entry.workspace === workspace).map((entry) => dispose(entry.id)));
+}

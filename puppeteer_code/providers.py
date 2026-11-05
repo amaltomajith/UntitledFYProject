@@ -76,7 +76,7 @@ class MockClient:
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7,
              max_tokens: int = 2048, tools: Optional[list[dict]] = None,
-             on_delta: Optional[Callable[[str], None]] = None) -> dict:
+             on_delta: Optional[Callable[[str], None]] = None, on_progress: Optional[Callable[..., None]] = None) -> dict:
         reply = self.responder(model, messages)
         text = reply.get("content", "") if isinstance(reply, dict) else reply
         prompt_tokens = sum(approx_tokens(m.get("content") or "") for m in messages)
@@ -86,6 +86,10 @@ class MockClient:
                                "tools": tools})
         if on_delta is not None and text:
             on_delta(text)
+        if on_progress is not None and text:
+            on_progress("content", text)
+        for call in (reply.get("tool_calls", []) if isinstance(reply, dict) and on_progress is not None else []):
+            on_progress("tool", call["arguments"], call["name"])
         out = {
             "content": text,
             "model": model,
@@ -100,6 +104,7 @@ class MockClient:
             out["tool_calls"] = reply.get("tool_calls", []) if isinstance(reply, dict) else []
         if isinstance(reply, dict) and reply.get("tool_failed"):
             out["tool_failed"] = True
+            out["cut_off"] = bool(reply.get("cut_off"))
         return out
 
     def list_models(self) -> list[str]:
@@ -122,8 +127,9 @@ class CachingClient:
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7,
              max_tokens: int = 2048, tools: Optional[list[dict]] = None,
-             on_delta: Optional[Callable[[str], None]] = None, **options) -> dict:
-        path = self._key(model, messages, temperature, max_tokens, tools, options)
+             on_delta: Optional[Callable[[str], None]] = None, on_progress: Optional[Callable[..., None]] = None,
+             **options) -> dict:
+        path = self._key(model, messages, temperature, max_tokens, tools, options)     # a cached reply has no pieces
         if path.exists():
             self.hits += 1
             data = json.loads(path.read_text(encoding="utf-8"))

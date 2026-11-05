@@ -1,13 +1,13 @@
 "use client";
 
 import { IDE } from "@/lib/content";
-import { IdeError, ideCall, post, type Effort, type IdeState, type Mode, type SavedChat, type View } from "@/lib/ide";
+import { IdeError, ideCall, post, type Effort, type IdeState, type Mode, type SavedChat, type View, type IdeClient } from "@/lib/ide";
 
 const C = IDE.commands;
 const EFFORTS: Effort[] = ["fast", "normal", "think", "deep"];
 
 type Context = {
-  token: string;
+  client: IdeClient;
   view: View;
   state: IdeState;
   setState: (state: IdeState) => void;
@@ -21,15 +21,15 @@ type Context = {
 };
 
 export function useCommands(context: Context) {
-  const { token, view, state, setState, send, local, refresh } = context;
+  const { client, view, state, setState, send, local, refresh } = context;
 
   const earlier = async () => {
-    const { sessions } = await ideCall<{ sessions: SavedChat[] }>(token, "sessions");
+    const { sessions } = await ideCall<{ sessions: SavedChat[] }>(client, "sessions");
     return sessions.filter((row) => row.id !== state.session_id);
   };
 
   const resume = async (id: string) => {
-    await post(token, "resume", { id });
+    await post(client, "resume", { id });
     await refresh();
   };
 
@@ -58,7 +58,7 @@ export function useCommands(context: Context) {
         case "help":
           return local({ type: "help" });
         case "clear":
-          return view.busy ? say(C.busy) : void (await post(token, "clear"));
+          return view.busy ? say(C.busy) : void (await post(client, "clear"));
         case "resume": {
           if (view.busy) return say(C.busy);
           if (!args.length) return await showResume(say);
@@ -68,7 +68,7 @@ export function useCommands(context: Context) {
         case "undo":
           if (view.busy) return say(C.busy);
           if (!state.can_undo) return say(C.noUndo);
-          await post(token, "undo");
+          await post(client, "undo");
           return await refresh();
         case "diff":
           return context.showChanges();
@@ -85,16 +85,16 @@ export function useCommands(context: Context) {
         case "approve":
           if (view.busy) return say(C.busy);
           if (!state.pending_plan) return say(C.noPending);
-          return setState(await post<IdeState>(token, "plan/approve"));
+          return setState(await post<IdeState>(client, "plan/approve"));
         case "effort": {
           if (args.length && !EFFORTS.includes(args[0] as Effort)) return say(C.effortUsage);
-          if (args.length) setState(await post<IdeState>(token, "effort", { level: args[0] }));
+          if (args.length) setState(await post<IdeState>(client, "effort", { level: args[0] }));
           return say(C.effortIs(args[0] ?? state.effort));
         }
         case "private": {
           if (args.length && args[0] !== "on" && args[0] !== "off") return say(C.privateUsage);
           if (args.length && view.busy) return say(C.busy);
-          const next = args.length ? await post<IdeState>(token, "private", { on: args[0] === "on" }) : state;
+          const next = args.length ? await post<IdeState>(client, "private", { on: args[0] === "on" }) : state;
           if (args.length) setState(next);
           if (!next.private.on) return say(IDE.private.off);
           const { claim, outside, warning, setup } = next.private;
@@ -105,7 +105,7 @@ export function useCommands(context: Context) {
           return view.busy ? say(C.busy) : send({ type: "send", message: rest, mode: "build", effort: "think" });
         case "model": {
           if (args.length !== 0 && args.length !== 2) return say(C.modelUsage);
-          const next = args.length ? await post<IdeState>(token, "model", { tier: args[0], model: args[1] }) : state;
+          const next = args.length ? await post<IdeState>(client, "model", { tier: args[0], model: args[1] }) : state;
           if (args.length) setState(next);
           return say(Object.entries(next.models).map(([tier, id]) => `${tier}: ${id}`).join("\n"));
         }

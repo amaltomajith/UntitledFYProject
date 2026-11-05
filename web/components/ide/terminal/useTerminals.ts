@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IDE } from "@/lib/content";
-import { IdeError, ideCall, post } from "@/lib/ide";
+import { IdeError, ideCall, post, type IdeClient } from "@/lib/ide";
 import { configure, dispose, disposeAll, focusTerminal, writeNote } from "./store";
 
 const LAYOUT_KEY = "pcode-terminal-groups";
@@ -22,7 +22,7 @@ export type TerminalRow = {
 export type ShellRow = { id: string; name: string; icon: string; default: boolean };
 type Shells = { shells: ShellRow[]; install: string | null; windows_build: number | null };
 type Options = {
-  token: string;
+  client: IdeClient;
   project: string | null;
   wanted: boolean;              // the Terminal tab is showing, so an empty panel starts a shell
   onDock: (id: string) => void;
@@ -49,7 +49,7 @@ const session = () => sessionStorage;
 const local = () => localStorage;
 const without = (groups: string[][], id: string) => groups.map((g) => g.filter((t) => t !== id)).filter((g) => g.length);
 
-export function useTerminals({ token, project, wanted, onDock, onRemoved }: Options) {
+export function useTerminals({ client, project, wanted, onDock, onRemoved }: Options) {
   const [rows, setRows] = useState<TerminalRow[]>([]);
   const [groups, setGroups] = useState<string[][]>([]);
   const [docked, setDocked] = useState<string[]>([]);
@@ -85,14 +85,14 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
     setReady(false);
     void (async () => {
       try {
-        await disposeAll();
+        await disposeAll(client.workspace);
         const [found, list] = await Promise.all([
-          ideCall<Shells>(token, "shells"),
-          ideCall<{ terminals: TerminalRow[] }>(token, "terminals"),
+          ideCall<Shells>(client, "shells"),
+          ideCall<{ terminals: TerminalRow[] }>(client, "terminals"),
         ]);
         if (stale) return;
         configure({
-          token,
+          client,
           windowsBuild: found.windows_build,
           onExit: (id, code) => {
             if (code) void writeNote(id, IDE.terminal.exited(code));
@@ -101,7 +101,7 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
         });
         const live = list.terminals;
         const known = new Set(live.map((t) => t.id));
-        const saved: string[][] = JSON.parse(stored(session, LAYOUT_KEY) ?? "[]");
+        const saved: string[][] = JSON.parse(stored(session, `${LAYOUT_KEY}:${client.workspace}`) ?? "[]");
         const kept = saved.map((g) => g.filter((id) => known.has(id))).filter((g) => g.length);
         const placed = new Set(kept.flat());
         const next = [...kept, ...live.filter((t) => !placed.has(t.id)).map((t) => [t.id])];
@@ -123,11 +123,11 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
     return () => {
       stale = true;
     };
-  }, [token, project, forget]);
+  }, [client, project, forget]);
 
   useEffect(() => {
-    if (ready) store(session, LAYOUT_KEY, JSON.stringify(groups));
-  }, [groups, ready]);
+    if (ready) store(session, `${LAYOUT_KEY}:${client.workspace}`, JSON.stringify(groups));
+  }, [groups, ready, client]);
 
   // A drop can remove the row it started from, and a removed row never fires its own dragend.
   useEffect(() => {
@@ -145,7 +145,7 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
     async (shell?: string | null, split = false) => {
       setError(null);
       try {
-        const row = await post<TerminalRow>(token, "terminals", { shell: shell ?? defaultShell ?? undefined });
+        const row = await post<TerminalRow>(client, "terminals", { shell: shell ?? defaultShell ?? undefined });
         setRows((all) => [...all, row]);
         setGroups((all) => {
           const home = split && active ? all.findIndex((g) => g.includes(active)) : -1;
@@ -157,7 +157,7 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
         fail(e);
       }
     },
-    [token, defaultShell, active],
+    [client, defaultShell, active],
   );
 
   useEffect(() => {
@@ -168,7 +168,7 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
 
   const kill = async (id: string) => {
     try {
-      await ideCall(token, `terminals/${id}`, { method: "DELETE" });
+      await ideCall(client, `terminals/${id}`, { method: "DELETE" });
     } catch (e) {
       if (!(e instanceof IdeError && e.status === 404)) return fail(e);
     }
@@ -177,7 +177,7 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
 
   const rename = async (id: string, name: string) => {
     try {
-      const row = await post<TerminalRow>(token, `terminals/${id}/rename`, { name });
+      const row = await post<TerminalRow>(client, `terminals/${id}/rename`, { name });
       setRows((all) => all.map((t) => (t.id === id ? row : t)));
     } catch (e) {
       fail(e);
@@ -238,7 +238,7 @@ export function useTerminals({ token, project, wanted, onDock, onRemoved }: Opti
   };
 
   return {
-    rows, groups, docked, active, shells, install, defaultShell, ready, error, dragging,
+    workspace: client.workspace, rows, groups, docked, active, shells, install, defaultShell, ready, error, dragging,
     setDragging, create, kill, rename, reorder, join, dock, undock, select, chooseDefault,
   };
 }

@@ -73,12 +73,12 @@ def score(task: BuildTask, project: Path) -> dict:
 
 
 def run_one(task: BuildTask, method: str, seed: int, make_provider: Callable[[], object],
-            policy=None, token_budget: int = 60000) -> dict:
+            policy=None, token_budget: int = 60000, memory: bool = False) -> dict:
     home = Path(tempfile.mkdtemp(prefix="pcode-bench-"))
     project = home / "project"
     provider = make_provider()
     session = AssistantSession(project, provider, mode="auto", home=home, token_budget=token_budget,
-                               policy=policy or make_policy(method), fallback=False)
+                               policy=policy or make_policy(method), fallback=False, memory=memory)
     agents, statuses = [], {}
     started = time.monotonic()
     try:
@@ -95,7 +95,7 @@ def run_one(task: BuildTask, method: str, seed: int, make_provider: Callable[[],
     status = statuses.get("status", "error")
     return {"task": task.id, "lang": task.lang, "method": method, "seed": seed, **result,
             "tokens": provider.meter.total_tokens, "cost_usd": provider.meter.cost_usd, "wall_s": round(wall, 1),
-            "agents": agents,
+            "agents": agents, "memory": memory,
             "status": status, "claimed_ok": status == "done",
             "provider_error": status in ("quota", "error"), "models": dict(provider.tiers)}
 
@@ -159,7 +159,7 @@ def cmd_buildbench(args) -> int:
                 if (task.id, method, seed) in done:
                     continue
                 row = run_one(task, method, seed, make_provider, policy if method == "linear" else None,
-                              args.token_budget)
+                              args.token_budget, args.memory)
                 rows.append(row)
                 save(out, rows, meta)
                 print(f"{task.id:14s} {method:10s} seed {seed}: {row['passed']}/{row['total']} "
@@ -184,6 +184,7 @@ def register(sub, provider_args) -> None:
     b.add_argument("--fast-model", default=None)
     b.add_argument("--weights", default=None, help="LinearAssistantPolicy weights file")
     b.add_argument("--train", action="store_true", help="update and save the linear policy after each run")
+    b.add_argument("--memory", action="store_true", help="turn the memory graph on; off keeps runs comparable")
     b.add_argument("--resume", action="store_true")
     b.add_argument("--out", default=str(ROOT / "runs" / "buildbench.json"))
     b.set_defaults(func=cmd_buildbench)

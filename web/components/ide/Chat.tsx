@@ -1,14 +1,19 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, Stop } from "@phosphor-icons/react";
 import { IDE, type SlashCommand } from "@/lib/content";
-import type { Item, SavedChat, View } from "@/lib/ide";
+import { when, type Item, type SavedChat, type View } from "@/lib/ide";
 import { looksLikeCommand, SlashMenu, usePrompt } from "./Slash";
 
 type Mode = "build" | "fix";
 
 type Props = {
+  active: boolean;                 // a hidden folder's chat leaves the keyboard alone
+  header: ReactNode;
+  status: ReactNode;
+  jump: { turn: number } | null;
+  onJumped: () => void;
   view: View;
   model: string;
   canUndo: boolean;
@@ -102,9 +107,6 @@ function Done({ item, last, ...props }: { item: Extract<Item, { kind: "done" }>;
   );
 }
 
-const when = (saved: number) =>
-  new Date(saved * 1000).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-
 function Sessions({ rows, onResume }: { rows: SavedChat[]; onResume: (id: string) => void }) {
   return (
     <section className="ide-sessions" aria-label={IDE.commands.pickResume}>
@@ -157,13 +159,13 @@ function Help() {
   );
 }
 
-type EntryProps = Omit<Props, "view" | "model" | "onSend" | "onSlash" | "onShell" | "onCancel">;
+type EntryProps = Omit<Props, "active" | "header" | "status" | "jump" | "onJumped" | "view" | "model" | "onSend" | "onSlash" | "onShell" | "onCancel">;
 
 function Entry({ item, last, running, ...props }: { item: Item; last: boolean; running: boolean } & EntryProps) {
   switch (item.kind) {
     case "user":
       return (
-        <div className="ide-user">
+        <div className="ide-user" data-turn={item.turn ?? undefined}>
           <p>{item.text}</p>
         </div>
       );
@@ -314,13 +316,15 @@ const typingSomewhere = () => {
 // Esc belongs to whatever runs in a terminal, such as vim.
 const inTerminal = () => !!document.activeElement?.closest(".xterm");
 
-export function Chat({ view, model, onSend, onSlash, onShell, onCancel, ...props }: Props) {
+export function Chat({ active, header, status, jump, onJumped, view, model, onSend, onSlash, onShell, onCancel, ...props }: Props) {
   const [text, setText] = useState("");
+  const inputId = useId();
   const [mode, setMode] = useState<Mode>("build");
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const log = useRef<HTMLDivElement>(null);
 
-  const box = usePrompt("ide-input", text, setText, (line) => {
+  const box = usePrompt(inputId, text, setText, (line) => {
     if (looksLikeCommand(line)) onSlash(line);
     else if (line.startsWith("!") && line.length > 1) onShell(line.slice(1).trim());
     else if (view.busy) return false;
@@ -328,9 +332,22 @@ export function Chat({ view, model, onSend, onSlash, onShell, onCancel, ...props
   });
 
   useEffect(() => {
+    if (jump) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
     end.current?.scrollIntoView({ behavior: motion, block: "end" });
-  }, [view.items, view.busy]);
+  }, [view.items, view.busy, jump]);
+
+  useEffect(() => {
+    if (!jump) return;
+    const turn = log.current?.querySelector<HTMLElement>(`[data-turn="${jump.turn}"]`);
+    if (!turn) return;      // the session is still loading: the next feed brings it here
+    turn.scrollIntoView({ block: "start" });
+    turn.dataset.jumped = "true";
+    const timer = window.setTimeout(() => delete turn.dataset.jumped, 1600);
+    onJumped();
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump, view.items]);
 
   useEffect(() => {
     if (!input.current) return;
@@ -339,6 +356,7 @@ export function Chat({ view, model, onSend, onSlash, onShell, onCancel, ...props
   }, [text]);
 
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (e.key === "Escape" && view.busy && !inTerminal()) onCancel();
@@ -350,15 +368,18 @@ export function Chat({ view, model, onSend, onSlash, onShell, onCancel, ...props
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view.busy, onCancel]);
+  }, [active, view.busy, onCancel]);
 
   const label = [...view.items].reverse().find((item) => item.kind === "work");
 
   return (
     <aside className="ide-chat" aria-label={IDE.chat.label}>
-      <h2 className="ide-chat__title">{IDE.chat.title}</h2>
-      {props.claim ? <p className="ide-chat__claim">{props.claim}</p> : null}
-      <div className="ide-chat__log" role="log" aria-live="polite">
+      <div className="ide-chat__head">
+        {header}
+        {status}
+        {props.claim ? <p className="ide-chat__claim">{props.claim}</p> : null}
+      </div>
+      <div ref={log} className="ide-chat__log" role="log" aria-live="polite">
         {view.items.length === 0 ? (
           <Welcome
             onPick={(name) => {
@@ -387,14 +408,14 @@ export function Chat({ view, model, onSend, onSlash, onShell, onCancel, ...props
           if (text.trim()) box.run(text.trim());
         }}
       >
-        <SlashMenu id="ide-input" items={box.items} index={box.index} onPick={box.pick} />
+        <SlashMenu id={inputId} items={box.items} index={box.index} onPick={box.pick} />
         <div className="ide-prompt">
-          <label htmlFor="ide-input" className="sr-only">
+          <label htmlFor={inputId} className="sr-only">
             {IDE.chat.inputLabel}
           </label>
           <textarea
             ref={input}
-            id="ide-input"
+            id={inputId}
             rows={1}
             value={text}
             spellCheck={false}

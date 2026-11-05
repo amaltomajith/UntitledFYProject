@@ -18,6 +18,7 @@ export type IdeState = {
   provider: string | null;
   project: string | null;
   session_id: string | null;
+  session_title: string;
   mode: Mode;
   effort: Effort;
   pending_plan: boolean;
@@ -29,11 +30,12 @@ export type IdeState = {
   seq: number;
 };
 
-export type SavedChat = { id: string; saved: number; title: string };
+export type SavedChat = { id: string; saved: number; title: string; turns: number };
+export type Turn = { status: string; reason: string; verified: boolean; question: boolean; tokens: number; files: string[] };
 export type TermLine = { kind: "cmd" | "out" | "sys"; text: string };
 
 export type Item =
-  | { kind: "user"; text: string }
+  | { kind: "user"; text: string; turn: number | null }
   | { kind: "plan"; steps: string[] }
   | { kind: "work"; label: string; details: string[] }
   | { kind: "approval"; id: string; command: string; reason: string; answer: boolean | null }
@@ -54,7 +56,64 @@ export type Item =
       fixRun: string | null;
     };
 
+export type LiveRow =
+  | { kind: "agent"; agent: string; label: string; since: number; thinking: string }
+  | { kind: "event"; tone: "good" | "bad" | "info"; text: string };
+
+export type LiveEdit = {
+  path: string;
+  action: string;
+  added: number;
+  removed: number;
+  hunks: { line: number; end: number; lines: string[] }[];
+  more: boolean;
+};
+
+export type Live = {
+  id: number;
+  running: boolean;
+  writing: boolean;             // this request can change files, so the tab opens for it
+  coding: boolean;              // the agent at work is one that writes code
+  asking: boolean;              // waiting for the user to answer an approval
+  label: string;
+  phase: string;
+  path: string;
+  seconds: number;
+  silent: number;
+  rate: number | null;
+  step: number;
+  maxSteps: number;
+  code: { path: string; text: string } | null;
+  rows: LiveRow[];
+  edits: LiveEdit[];
+  result: { status: string; reason: string } | null;
+};
+
+export const NO_LIVE: Live = {
+  id: 0,
+  running: false,
+  writing: false,
+  coding: false,
+  asking: false,
+  label: "",
+  phase: "waiting",
+  path: "",
+  seconds: 0,
+  silent: 0,
+  rate: null,
+  step: 0,
+  maxSteps: 0,
+  code: null,
+  rows: [],
+  edits: [],
+  result: null,
+};
+
+const WRITERS = ["Builder", "Debugger", "TestWriter"];
+const OPENS_LIVE = ["Planner", ...WRITERS];
+
 export type View = {
+  live: Live;
   items: Item[];
   busy: boolean;
   requestTokens: number;
@@ -65,10 +124,13 @@ export type View = {
   changed: Record<string, string>;
   fileTick: number;
   lastFile: string | null;
+  graphTick: number;
+  touched: { path: string; n: number } | null;
   seq: number;
 };
 
 export const EMPTY_VIEW: View = {
+  live: NO_LIVE,
   items: [],
   busy: false,
   requestTokens: 0,
@@ -79,6 +141,8 @@ export const EMPTY_VIEW: View = {
   changed: {},
   fileTick: 0,
   lastFile: null,
+  graphTick: 0,
+  touched: null,
   seq: 0,
 };
 
@@ -96,15 +160,110 @@ function closeApprovals(items: Item[]): Item[] {
   return items.map((it) => (it.kind === "approval" && it.answer === null ? { ...it, answer: false } : it));
 }
 
+/** A saved conversation as a feed. A turn from before results were kept has only its text. */
+function feedFrom(history: { role: string; content: string }[], turns: Partial<Turn>[]): Item[] {
+  let turn = 0;
+  return history.flatMap((message): Item[] => {
+    if (message.role === "user") return [{ kind: "user", text: message.content, turn: ++turn }];
+    const reply: Item = { kind: "reply", text: message.content };
+    const result = turns[turn - 1];
+    return result?.status ? [reply, { ...(result as Turn), kind: "done", fixRun: null }] : [reply];
+  });
+}
+
+const addRow = (live: Live, row: LiveRow): Live => ({ ...live, rows: [...live.rows, row] });
+
+/** The Live tab's share of an event. `activity` and the two text events are never replayed. */
+function liveEvent(live: Live, event: Event): Live {
+  switch (event.type) {
+    case "user":
+      return { ...NO_LIVE, id: live.id + 1, running: true };
+    case "agent":
+      return addRow(
+        {
+          ...live,
+          running: true,
+          writing: live.writing || OPENS_LIVE.includes(event.agent),
+          coding: WRITERS.includes(event.agent),
+          label: event.label ?? event.agent,
+          phase: "waiting",
+          path: "",
+          code: null,
+          step: event.step ?? live.step,
+          maxSteps: event.max_steps ?? live.maxSteps,
+        },
+        { kind: "agent", agent: event.agent, label: event.label ?? event.agent, since: live.seconds, thinking: "" },
+      );
+    case "activity":
+      if (!live.running) return live;
+      return {
+        ...live,
+        label: event.label || live.label,
+        phase: event.phase,
+        path: event.path,
+        seconds: event.seconds,
+        silent: event.silent,
+        rate: event.rate,
+      };
+    case "approval_request":
+      return { ...live, asking: true };
+    case "approval_answered":
+      return { ...live, asking: false };
+    case "thinking_delta": {
+      const at = live.rows.map((row) => row.kind).lastIndexOf("agent");
+      if (at < 0) return live;
+      return { ...live, rows: live.rows.map((row, i) => (i === at ? { ...row, thinking: event.text } : row)) };
+    }
+    case "code_delta":
+      return { ...live, code: { path: event.path, text: event.text } };
+    case "file_diff":
+      return {
+        ...live,
+        code: null,
+        edits: [
+          ...live.edits,
+          { path: event.path, action: event.action, added: event.added, removed: event.removed, hunks: event.hunks, more: event.more },
+        ],
+      };
+    case "verify":
+      return addRow(live, { kind: "event", tone: event.ok ? "good" : "bad", text: event.summary });
+    case "rollback":
+      return addRow(live, { kind: "event", tone: "bad", text: `Went back: ${event.reason}` });
+    case "notice":
+      return addRow(live, { kind: "event", tone: "info", text: event.text });
+    case "done":
+      return { ...live, running: false, code: null, result: { status: event.status, reason: event.reason ?? "" } };
+    case "opened":
+    case "cleared":
+    case "resumed":
+      return { ...NO_LIVE, id: 0 };
+    default:
+      return live;
+  }
+}
+
 /** Turns one engine event into view state. Pure, so a reconnect can replay the log. */
 export function applyEvent(view: View, event: Event): View {
-  const next = { ...view, seq: event.seq ?? view.seq };
+  const live = liveEvent(view.live, event);
+  const next = { ...view, live, seq: event.seq ?? view.seq };
   const { items } = view;
   switch (event.type) {
     case "opened":
-      return { ...EMPTY_VIEW, totalTokens: view.totalTokens, seq: next.seq, fileTick: view.fileTick + 1 };
+      return {
+        ...EMPTY_VIEW,
+        totalTokens: view.totalTokens,
+        seq: next.seq,
+        fileTick: view.fileTick + 1,
+        graphTick: view.graphTick + 1,
+      };
     case "user":
-      return { ...next, busy: true, requestTokens: 0, changed: {}, items: [...items, { kind: "user", text: event.text }] };
+      return {
+        ...next,
+        busy: true,
+        requestTokens: 0,
+        changed: {},
+        items: [...items, { kind: "user", text: event.text, turn: event.turn ?? null }],
+      };
     case "agent":
       return { ...next, busy: true, items: [...items, { kind: "work", label: event.label ?? event.agent, details: [] }] };
     case "plan":
@@ -112,7 +271,8 @@ export function applyEvent(view: View, event: Event): View {
     case "tool_start": {
       const detail = event.args?.path ?? event.args?.command ?? event.args?.pattern ?? "";
       const terminal = event.args?.command ? addToTerminal(view, { kind: "cmd", text: `${event.args.command}\n` }) : view.terminal;
-      return { ...next, terminal, items: addToWork(items, `${event.tool} ${detail}`.trim()) };
+      const touched = event.args?.path ? { path: event.args.path, n: (view.touched?.n ?? 0) + 1 } : view.touched;
+      return { ...next, terminal, touched, items: addToWork(items, `${event.tool} ${detail}`.trim()) };
     }
     case "tool_end":
       return event.ok ? next : { ...next, items: addToWork(items, String(event.summary).split("\n")[0]) };
@@ -121,6 +281,7 @@ export function applyEvent(view: View, event: Event): View {
         ...next,
         fileTick: view.fileTick + 1,
         lastFile: event.path,
+        touched: { path: event.path, n: (view.touched?.n ?? 0) + 1 },
         changed: { ...view.changed, [event.path]: event.action },
       };
     case "text_delta": {
@@ -132,6 +293,10 @@ export function applyEvent(view: View, event: Event): View {
     }
     case "notice":
       return { ...next, items: [...items, { kind: "note", tone: "warn", text: event.text }] };
+    case "memory":
+      return { ...next, items: [...items, { kind: "note", tone: "info", text: event.text }] };
+    case "graph_delta":
+      return { ...next, graphTick: view.graphTick + 1 };
     case "effort":
       return { ...next, items: [...items, { kind: "note", tone: "info", text: `${event.level}: ${event.how}` }] };
     case "error":
@@ -175,15 +340,9 @@ export function applyEvent(view: View, event: Event): View {
     case "help":
       return { ...next, items: [...items, { kind: "help" }] };
     case "cleared":
-      return { ...next, items: [], changed: {}, requestTokens: 0 };
+      return { ...next, items: [], changed: {}, requestTokens: 0, graphTick: view.graphTick + 1 };
     case "resumed":
-      return {
-        ...next,
-        changed: {},
-        items: event.history.map((m: { role: string; content: string }): Item =>
-          m.role === "user" ? { kind: "user", text: m.content } : { kind: "reply", text: m.content },
-        ),
-      };
+      return { ...next, changed: {}, graphTick: view.graphTick + 1, items: feedFrom(event.history, event.turns ?? []) };
     case "preview":
       return { ...next, preview: event.url };
     case "usage":
@@ -201,6 +360,7 @@ export function applyEvent(view: View, event: Event): View {
       return {
         ...next,
         fileTick: view.fileTick + 1,
+        graphTick: view.graphTick + 1,
         changed: {},
         items: [...items, { kind: "note", tone: "info", text: undoText(event.restored, event.kept) }],
       };
@@ -228,6 +388,9 @@ export function applyEvent(view: View, event: Event): View {
   }
 }
 
+export const when = (saved: number) =>
+  new Date(saved * 1000).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
 function undoText(restored: string[], kept: string[]) {
   const put = `Put back ${restored.length} file${restored.length === 1 ? "" : "s"}.`;
   return kept.length ? `${put} Kept ${kept.join(", ")}: you changed it afterwards.` : put;
@@ -253,12 +416,19 @@ export class IdeError extends Error {
   }
 }
 
-export async function ideCall<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+/** Who is asking: the launch's token, and the open folder. An empty workspace is the whole IDE. */
+export type IdeClient = { token: string; workspace: string };
+
+export async function ideCall<T>(client: IdeClient, path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${apiBase()}/api/ide/${path}`, {
       ...init,
-      headers: { "content-type": "application/json", "x-pcode-token": token },
+      headers: {
+        "content-type": "application/json",
+        "x-pcode-token": client.token,
+        ...(client.workspace ? { "x-pcode-workspace": client.workspace } : {}),
+      },
     });
   } catch {
     throw new IdeError("Lost the connection to pcode ide.", "offline", 0);
@@ -271,17 +441,17 @@ export async function ideCall<T>(token: string, path: string, init?: RequestInit
   return body as T;
 }
 
-export const post = <T,>(token: string, path: string, body?: unknown) =>
-  ideCall<T>(token, path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+export const post = <T,>(client: IdeClient, path: string, body?: unknown) =>
+  ideCall<T>(client, path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 function socketUrl() {
   const base = apiBase() || window.location.origin;
   return `${base.replace(/^http/, "ws")}/api/ide/ws`;
 }
 
-export type Link = "connecting" | "open" | "lost" | "denied";
+export type Link = "connecting" | "open" | "lost" | "denied" | "gone";
 
-export function useIde(token: string) {
+export function useIde(client: IdeClient) {
   const [view, dispatch] = useReducer(
     (state: View, action: Event | { type: "reset" }) => (action.type === "reset" ? EMPTY_VIEW : applyEvent(state, action)),
     EMPTY_VIEW,
@@ -294,11 +464,11 @@ export function useIde(token: string) {
 
   const refresh = useCallback(async () => {
     try {
-      setState(await ideCall<IdeState>(token, "state"));
+      setState(await ideCall<IdeState>(client, "state"));
     } catch (e) {
       if (e instanceof IdeError && e.status === 401) setLink("denied");
     }
-  }, [token]);
+  }, [client]);
 
   useEffect(() => {
     let stop = false;
@@ -307,7 +477,7 @@ export function useIde(token: string) {
     const connect = () => {
       const ws = new WebSocket(socketUrl());
       socket.current = ws;
-      ws.onopen = () => ws.send(JSON.stringify({ token, since: seq.current }));
+      ws.onopen = () => ws.send(JSON.stringify({ token: client.token, workspace: client.workspace, since: seq.current }));
       ws.onmessage = (message) => {
         const event = JSON.parse(message.data) as Event;
         if (event.type === "hello") {
@@ -324,6 +494,10 @@ export function useIde(token: string) {
           setLink("denied");
           return;
         }
+        if (closed.code === 4405) {
+          setLink("gone");
+          return;
+        }
         setLink("lost");
         timer = window.setTimeout(connect, RETRY_MS);
       };
@@ -335,7 +509,7 @@ export function useIde(token: string) {
       window.clearTimeout(timer);
       socket.current?.close();
     };
-  }, [token, refresh]);
+  }, [client, refresh]);
 
   const send = useCallback((message: Record<string, unknown>) => {
     if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(message));

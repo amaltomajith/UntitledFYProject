@@ -23,10 +23,10 @@ const ICONS: Record<string, string> = {
 
 export const shellIcon = (icon: string) => ICONS[icon] ?? "terminal";
 
-export function TerminalSlot({ id, focus }: { id: string; focus: boolean }) {
+export function TerminalSlot({ id, workspace, focus }: { id: string; workspace: string; focus: boolean }) {
   const slot = useRef<HTMLDivElement>(null);
 
-  useEffect(() => mount(id, slot.current as HTMLDivElement, focus), [id, focus]);
+  useEffect(() => mount(id, workspace, slot.current as HTMLDivElement, focus), [id, workspace, focus]);
 
   return <div ref={slot} className="ide-slot" />;
 }
@@ -199,10 +199,10 @@ export function TerminalArea({ t }: { t: Terminals }) {
           {t.error}
         </p>
       ) : null}
-      <Group orientation="horizontal" id="ide-terminals" key={rail ? "rail" : "alone"}>
+      <Group orientation="horizontal" id={`ide-terminals-${t.workspace}`} key={rail ? "rail" : "alone"}>
         <Panel id="terminal-view" minSize={160}>
           <div className="ide-terms__view">
-            <Group orientation="horizontal" id={`ide-split-${group.length}`} key={group.join()}>
+            <Group orientation="horizontal" id={`ide-split-${t.workspace}-${group.length}`} key={group.join()}>
               {group.flatMap((id, i) => [
                 i > 0 ? <Separator key={`sash-${id}`} className="ide-sash" /> : null,
                 <Panel key={id} id={id} minSize={120}>
@@ -213,7 +213,7 @@ export function TerminalArea({ t }: { t: Terminals }) {
                       if (t.active !== id) t.select(id);
                     }}
                   >
-                    <TerminalSlot id={id} focus={t.active === id} />
+                    <TerminalSlot id={id} workspace={t.workspace} focus={t.active === id} />
                   </div>
                 </Panel>,
               ])}

@@ -228,7 +228,7 @@ class OllamaClient:
 
     def chat(self, model: str, messages: list[dict], temperature: float = 0.7, max_tokens: int = 2048,
              tools: Optional[list[dict]] = None, on_delta: Optional[Callable[[str], None]] = None,
-             think=None) -> dict:
+             think=None, on_progress: Optional[Callable[..., None]] = None) -> dict:
         check_address(self.base_url)
         self.guard.check(model)
         native = to_native(messages)
@@ -252,6 +252,10 @@ class OllamaClient:
                     content.append(message["content"])
                     if on_delta is not None and not tools:
                         on_delta(message["content"])
+                    if on_progress is not None:
+                        on_progress("content", message["content"])
+                if on_progress is not None and message.get("thinking"):
+                    on_progress("thinking", message["thinking"])
                 thinking.append(message.get("thinking") or "")
                 native_calls += message.get("tool_calls") or []
                 if chunk.get("done"):
@@ -290,6 +294,8 @@ class OllamaClient:
         if malformed or cut_off or only_thought:
             reply["tool_failed"] = True
             reply["tool_calls"] = []
+        if cut_off:
+            reply["cut_off"] = True     # more of the same would be cut off the same way
 
 
 class LocalServer:

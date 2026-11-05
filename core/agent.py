@@ -366,12 +366,15 @@ class OpenAICompatClient:
         max_tokens: int = 2048,
         tools: Optional[list[dict]] = None,
         on_delta: Optional[Callable[[str], None]] = None,
+        on_progress: Optional[Callable[..., None]] = None,
     ) -> dict:
         """
         Call the chat completion endpoint with automatic retry/back-off.
 
-        tools    : OpenAI-style tool definitions; the reply then carries "tool_calls".
-        on_delta : called with each piece of text as it arrives (plain replies only).
+        tools       : OpenAI-style tool definitions; the reply then carries "tool_calls".
+        on_delta    : called with each piece of text as it arrives (plain replies only).
+        on_progress : called as a reply with tools arrives: ("thinking" | "content", text), or
+                      ("tool", arguments so far, tool name).
 
         Returns a plain dict (not the Pydantic object from the SDK) so that
         callers have a stable interface regardless of SDK version upgrades.
@@ -397,6 +400,8 @@ class OpenAICompatClient:
                 t0 = time.monotonic()
                 if on_delta is not None and not tools:
                     return self._stream(model, messages, temperature, max_tokens, on_delta, t0)
+                if on_progress is not None and tools:
+                    return self._stream_tools(model, messages, temperature, max_tokens, tools, on_progress, t0)
                 extra = {"tools": tools, "tool_choice": "auto"} if tools else {}
                 completion = self._client.chat.completions.create(
                     model=model,
@@ -498,6 +503,46 @@ class OpenAICompatClient:
                 "completion_tokens": usage.completion_tokens if usage else 0,
                 "total_tokens":      usage.total_tokens if usage else 0,
             },
+        }
+
+    def _stream_tools(self, model, messages, temperature, max_tokens, tools, on_progress, t0) -> dict:
+        """One streaming completion with tools, assembling each call as its pieces arrive."""
+        stream = self._client.chat.completions.create(
+            model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
+            tools=tools, tool_choice="auto", stream=True, stream_options={"include_usage": True},
+        )
+        parts: list[str] = []
+        calls: dict[int, dict] = {}
+        usage = None
+        served = model
+        for chunk in stream:
+            served = chunk.model or served
+            usage = chunk.usage or usage
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta is None:
+                continue
+            reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+            if reasoning:
+                on_progress("thinking", reasoning)
+            if delta.content:
+                parts.append(delta.content)
+                on_progress("content", delta.content)
+            for piece in delta.tool_calls or []:
+                call = calls.setdefault(piece.index or 0, {"id": "", "name": "", "arguments": ""})
+                call["id"] = piece.id or call["id"]
+                if piece.function is not None:
+                    call["name"] = piece.function.name or call["name"]
+                    call["arguments"] += piece.function.arguments or ""
+                on_progress("tool", call["arguments"], call["name"])
+        return {
+            "content": "".join(parts), "model": served, "latency_ms": (time.monotonic() - t0) * 1000,
+            "usage": {
+                "prompt_tokens":     usage.prompt_tokens if usage else 0,
+                "completion_tokens": usage.completion_tokens if usage else 0,
+                "total_tokens":      usage.total_tokens if usage else 0,
+            },
+            "tool_calls": [{"id": c["id"], "name": c["name"], "arguments": c["arguments"] or "{}"}
+                           for _, c in sorted(calls.items())],
         }
 
     def list_models(self) -> list[str]:

@@ -8,6 +8,14 @@ right, scroll-driven chapters. Inspired by the motion language of puture.co.kr, 
 icons, colour and layout. The accent is a royal purple-blue, more violet than the reference's blue.
 One tile per real agent in `puppeteer_code/agents.py`.
 
+## Memory Graph (`components/ide/MemoryGraph.tsx`, `lib/graph.ts`)
+
+`d3-force` on a `<canvas>`, because SVG does not hold 300 live nodes. Kinds differ by shape, label and colour
+(`--graph-*` tokens, never colour alone): session hexagon, episode diamond, file square, symbol circle. A failed episode
+uses `--graph-bad`, and the inspector states its result in words. The list beside the canvas is the keyboard and screen
+reader route to every node, the same rule as a chart with a table behind it. With reduced motion the layout settles first
+and draws one frame. "About N tokens saved" stays worded as an estimate, with its method in the tooltip.
+
 ## Tokens (`app/globals.css`, `:root`)
 
 | Token | Value | Use |
@@ -77,6 +85,14 @@ Scene colours mirror these by hand: `BODY` and the face gradient in `AgentTiles.
 - Terminals are real shells (`components/ide/terminal/`): `store.ts` holds each xterm outside React, so one survives
   moves between the panel and the editor; a slot adopts its host `<div>`. From two terminals up a rail appears on the
   right. Drags: every sash, rail rows to reorder, a terminal onto the terminal area to split, onto the editor to dock.
+- **Folder tabs** (`FolderTabs.tsx`) sit in the top bar. A tab is a whole workspace with its own files, terminals, chat, graph
+  and Private setting. Hidden folders use `visibility: hidden`, never `display: none`, because the panels read size 0 as
+  collapsed and xterm cannot measure. A folder that is working says so in a word: Working, Waiting or Needs you. Close is
+  disabled during a request, with the reason in its title, and unsaved work asks inline. Anything on `window` takes an
+  `active` or `shown` prop, so a hidden folder never answers the keyboard.
+- **Live tab** (`LiveView.tsx`): the work so far on the left, code on the right. The wording stays true: quiet is "No output
+  for 1m 20s. The model may still be working.", never "stuck". Private shows a reply's code when it finishes, because
+  Ollama holds tool calls back, and the tab says so. Added and removed lines keep their `+` and `-` signs.
 - The prompt shows the current model as plain text. The picker waits for the owner's plan for the AI part.
 - Slash commands live in `IDE.commands.list` in `lib/content.ts`, chat only, because a real shell owns its keyboard.
   One with a `prompt` is a premade request to the assistant; the rest run in `components/ide/useCommands.ts` and
