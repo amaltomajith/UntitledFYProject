@@ -1,0 +1,11 @@
+{
+ "seed": 0,
+ "counts": {
+  "gsm8k": 50,
+  "gsm-hard": 50,
+  "mmlu-pro": 70,
+  "bbh": 54
+ },
+ "smoke": 8,
+ "api": "https://datasets-server.huggingface.co"
+}

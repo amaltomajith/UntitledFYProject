@@ -244,7 +244,7 @@ def test_export_refuses_simulated_data(tmp_path):
     write_json(runs / "fix-0-old.json", {"success": True})                     # older file, provider unknown
 
     info = export_web(runs, tmp_path / "data")
-    assert info == {"benchmarks": 1, "training": 0, "demo_run": None}
+    assert info == {"benchmarks": 1, "training": 0, "build": 0, "reasoning": 0, "demo_run": None}
     data = json.loads((tmp_path / "data" / "benchmarks.json").read_text(encoding="utf-8"))
     assert [b["id"] for b in data] == ["bench-groq-repo"]
     assert data[0]["tasks_measured"] == 1 and data[0]["tasks_planned"] == 2 and data[0]["partial"]
@@ -259,6 +259,28 @@ def test_export_keeps_a_real_demo_run_without_the_local_path(tmp_path):
     assert info["demo_run"] == "fix-2"
     demo = json.loads((tmp_path / "data" / "demo-run.json").read_text(encoding="utf-8"))
     assert demo["repo"] == "project"
+
+
+def test_export_build_and_reasoning_real_only(tmp_path):
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    rows = [{"method": "direct", "task": "py_lru", "success": True, "models": ["m"]},
+            {"method": "direct", "task": "py_roman", "provider_error": "429"}]
+    write_json(runs / "buildbench-nebius.json", {"provider": "nebius", "benchmark": "PCodeBench-Build",
+                                                 "methods": ["direct"], "tasks": ["py_lru", "py_roman"],
+                                                 "rows": rows, "summary": {"direct": {"success": 1.0}}})
+    write_json(runs / "buildbench-groq.json", {"provider": "groq", "rows": rows})        # not on the allowlist
+    row = {"dataset": "gsm8k", "task": "gsm8k-1", "method": "direct", "correct": True}
+    write_json(runs / "reasoning-nebius.json", {"provider": "nebius", "tasks": ["gsm8k-1"], "rows": [row],
+                                                "summary": {"gsm8k": {}}})
+    write_json(runs / "reasoning-smoke.json", {"provider": "nebius", "smoke": True, "rows": [row]})
+    write_json(runs / "reasoning-sim.json", {"provider": "sim", "rows": [row]})
+    info = export_web(runs, tmp_path / "data")
+    assert info["build"] == 1 and info["reasoning"] == 1
+    build = json.loads((tmp_path / "data" / "build.json").read_text(encoding="utf-8"))
+    assert build[0]["token_limit"] == 60000 and build[0]["provider_errors"] == 1 and build[0]["runs"] == 1
+    reasoning = json.loads((tmp_path / "data" / "reasoning.json").read_text(encoding="utf-8"))
+    assert [r["id"] for r in reasoning] == ["reasoning-nebius"] and reasoning[0]["tasks"] == {"gsm8k": 1}
 
 
 def test_provider_errors_are_counted_not_aggregated(tmp_path):

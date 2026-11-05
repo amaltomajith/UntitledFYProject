@@ -160,12 +160,79 @@ async function staticJson<T>(name: string): Promise<T | null> {
 /** The real run exported for the hosted site, or null until one exists. */
 export const getDemoRun = () => staticJson<RunRecord & { id: string }>("demo-run");
 
-export async function getResults(): Promise<{ benchmarks: Benchmark[]; training: Training[] } | null> {
-  const live = await call<{ benchmarks: Benchmark[]; training: Training[] }>("/api/benchmarks").catch(() => null);
-  if (live?.benchmarks.length) return live;
-  const [benchmarks, training] = await Promise.all([
+export type BuildSummary = {
+  runs: number;
+  success: number;
+  tests_passed: number;
+  tokens: number;
+  cost_usd: number | null;
+  false_claims: number;
+};
+
+export type BuildBench = {
+  id: string;
+  provider: string;
+  dataset: string;
+  methods: string[];
+  tasks: number;
+  seeds: number | null;
+  token_limit: number;
+  role: "primary" | "sensitivity";
+  models: string[];
+  runs: number;
+  provider_errors: number;
+  summary: Record<string, BuildSummary>;
+};
+
+export type ReasoningMethod = {
+  n: number;
+  correct: number;
+  accuracy: number | null;
+  ci95: [number, number];
+  tokens: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  calls: number | null;
+  cost_usd: number | null;
+  cost_usd_total: number | null;
+  tokens_per_correct: number | null;
+  policy_fallbacks: number;
+};
+
+export type ReasoningPaired = { shared: number; ours_only: number; theirs_only: number; p_mcnemar: number };
+
+export type ReasoningBench = {
+  id: string;
+  provider: string;
+  model: string | null;
+  config: Record<string, unknown>;
+  datasets: string[];
+  methods: string[];
+  seeds: number[] | null;
+  partial: boolean;
+  excluded: number;
+  tasks: Record<string, number>;
+  summary: Record<string, { methods: Record<string, ReasoningMethod>; paired: Record<string, ReasoningPaired> }>;
+};
+
+export type Results = {
+  benchmarks: Benchmark[];
+  training: Training[];
+  build: BuildBench[];
+  reasoning: ReasoningBench[];
+};
+
+export async function getResults(): Promise<Results | null> {
+  const live = await call<Partial<Results>>("/api/benchmarks").catch(() => null);
+  if (live?.benchmarks?.length) {
+    return { benchmarks: live.benchmarks, training: live.training ?? [], build: live.build ?? [], reasoning: live.reasoning ?? [] };
+  }
+  const [benchmarks, training, build, reasoning] = await Promise.all([
     staticJson<Benchmark[]>("benchmarks"),
     staticJson<Training[]>("training"),
+    staticJson<BuildBench[]>("build"),
+    staticJson<ReasoningBench[]>("reasoning"),
   ]);
-  return benchmarks ? { benchmarks, training: training ?? [] } : live;
+  if (!benchmarks && !build && !reasoning) return null;
+  return { benchmarks: benchmarks ?? [], training: training ?? [], build: build ?? [], reasoning: reasoning ?? [] };
 }

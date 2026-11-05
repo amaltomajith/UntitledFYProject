@@ -576,6 +576,20 @@ embedding similarity, and then route to a dissenting critic or stop early.
 
 ## 9. Benchmarks
 
+**The fair benchmark for the core is `benchmarks/reasoning/`** (added 2026-11-05). It runs the real
+`core.Orchestrator` against single-call (direct, CoT) and fixed-pipeline baselines on fixed samples of GSM8K (50),
+GSM-Hard (50), MMLU-Pro (70) and BIG-Bench Hard (54), on one model, scores every answer with a checker, counts every
+call including the policy's own (which `EpisodeResult.total_tokens` leaves out), and reports Wilson intervals and
+paired McNemar tests. GAIA and ToolBench are not run: both need tools the core agents lack, and GAIA is gated.
+Protocol, results and caveats: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+
+```bash
+python benchmarks/reasoning/datasets.py --check
+python -m benchmarks.reasoning.run --out runs/reasoning-nebius-lightning.json --cache runs/cache/reasoning --resume
+```
+
+### Legacy scripts
+
 `benchmarks/token_comparison.py` runs 5 reasoning tasks against 5 methods (Puppeteer-style
 pipeline, single large model, fixed 5-agent pipeline, chain-of-thought, ReAct) and records
 tokens. `run_live_proof.py` adds parameter-weighted and dollar-weighted token comparisons
@@ -690,8 +704,10 @@ pytest tests -v --live -s       # + live Groq call, checks the model answers 225
 
 1. **Reward scale.** With the default config, token cost (≈ −50) swamps correctness (0 or 1).
    Set `RewardConfig.token_budget` to normalise $C_t$ (Puppeteer-Code does).
-2. **No ground truth.** The terminal reward is "finished with a non-empty answer", not
-   "answer is correct". Add labelled tasks (GSM8K / GSM-Hard style) and an answer checker.
+2. **No ground truth in training.** The terminal reward is "finished with a non-empty answer", not
+   "answer is correct". Labelled tasks and answer checkers now exist for evaluation
+   (`benchmarks/reasoning/`, §9), but the reward in `training/` does not use them yet.
+   Also, `EpisodeResult.total_tokens` leaves out the policy agent's own calls; the benchmark counts them.
 3. **Little exploration.** At temperature 0.2 and with a forced Concluder, all 6 logged
    training episodes ran the same sequence. The policy cannot learn from episodes that
    never differ. Sample at a higher temperature during training, or sample several
@@ -713,8 +729,8 @@ open for the general reasoning orchestrator.
 
 ## 13. Roadmap
 
-1. **Fair benchmark**: run the real `Orchestrator`, check correctness, repeat 3–5 times,
-   report mean ± std of accuracy and tokens.
+1. **Fair benchmark**: done for one seed (`benchmarks/reasoning/`, §9). Next: 3 or more seeds, thinking on, a
+   larger model.
 2. **Reward fix**: normalised cost; terminal reward from an answer checker.
 3. **Wire Extension 2**: registry inside the loop, dynamic policy prompt, real tools.
 4. **Extension 3**: dissent detector.
