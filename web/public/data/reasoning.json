@@ -31,12 +31,13 @@
   "seeds": [
    0
   ],
-  "partial": true,
+  "partial": false,
   "excluded": 0,
   "tasks": {
    "gsm8k": 50,
    "gsm-hard": 50,
-   "mmlu-pro": 4
+   "mmlu-pro": 70,
+   "bbh": 54
   },
   "summary": {
    "gsm8k": {
@@ -154,112 +155,112 @@
    "all": {
     "methods": {
      "cot": {
-      "n": 104,
-      "correct": 53,
-      "accuracy": 0.5096153846153846,
+      "n": 224,
+      "correct": 135,
+      "accuracy": 0.6026785714285714,
       "ci95": [
-       0.41492159966774017,
-       0.6036241435174049
+       0.5373840460661194,
+       0.6645107286517729
       ],
-      "tokens": 306.52884615384613,
-      "prompt_tokens": 154.375,
-      "completion_tokens": 152.15384615384616,
+      "tokens": 651.5133928571429,
+      "prompt_tokens": 204.12053571428572,
+      "completion_tokens": 447.39285714285717,
       "calls": 1.0,
-      "cost_usd": 4.577942307692307e-05,
-      "cost_usd_total": 0.004761059999999999,
-      "tokens_per_correct": 601.4905660377359,
-      "no_answer_tag": 36,
-      "wall_s": 0.9940384615384615,
+      "cost_usd": 0.00011962151785714285,
+      "cost_usd_total": 0.026795219999999998,
+      "tokens_per_correct": 1081.0296296296297,
+      "no_answer_tag": 47,
+      "wall_s": 2.2665625,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 104
+       "completed": 224
       }
      },
      "direct": {
-      "n": 104,
-      "correct": 14,
-      "accuracy": 0.1346153846153846,
+      "n": 224,
+      "correct": 66,
+      "accuracy": 0.29464285714285715,
       "ci95": [
-       0.08191117076579206,
-       0.21335058819869201
+       0.2388091644541733,
+       0.3574012861100419
       ],
-      "tokens": 151.47115384615384,
-      "prompt_tokens": 146.375,
-      "completion_tokens": 5.096153846153846,
+      "tokens": 203.91071428571428,
+      "prompt_tokens": 196.12053571428572,
+      "completion_tokens": 7.790178571428571,
       "calls": 1.0,
-      "cost_usd": 1.0005576923076923e-05,
-      "cost_usd_total": 0.00104058,
-      "tokens_per_correct": 1125.2142857142858,
-      "no_answer_tag": 104,
-      "wall_s": 0.37124999999999997,
+      "cost_usd": 1.3636875e-05,
+      "cost_usd_total": 0.00305466,
+      "tokens_per_correct": 692.060606060606,
+      "no_answer_tag": 154,
+      "wall_s": 0.399375,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 104
+       "completed": 224
       }
      },
      "fixed": {
-      "n": 104,
-      "correct": 80,
-      "accuracy": 0.7692307692307693,
+      "n": 224,
+      "correct": 172,
+      "accuracy": 0.7678571428571429,
       "ci95": [
-       0.6795448838800338,
-       0.8397359253040306
+       0.7083339745234031,
+       0.8183480464797946
       ],
-      "tokens": 2654.971153846154,
-      "prompt_tokens": 1711.826923076923,
-      "completion_tokens": 943.1442307692307,
+      "tokens": 3301.183035714286,
+      "prompt_tokens": 2063.9866071428573,
+      "completion_tokens": 1237.1964285714287,
       "calls": 4.0,
-      "cost_usd": 0.00032906423076923077,
-      "cost_usd_total": 0.03422268,
-      "tokens_per_correct": 3451.4625,
+      "cost_usd": 0.0004207663392857143,
+      "cost_usd_total": 0.09425166,
+      "tokens_per_correct": 4299.21511627907,
       "no_answer_tag": 0,
-      "wall_s": 5.968846153846154,
+      "wall_s": 7.196830357142857,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 104
+       "completed": 224
       }
      },
      "puppeteer": {
-      "n": 103,
-      "correct": 85,
-      "accuracy": 0.8252427184466019,
+      "n": 224,
+      "correct": 175,
+      "accuracy": 0.78125,
       "ci95": [
-       0.7405963558470099,
-       0.8865010344314423
+       0.722620469559305,
+       0.8303956524940523
       ],
-      "tokens": 4242.922330097087,
-      "prompt_tokens": 3111.135922330097,
-      "completion_tokens": 1131.7864077669904,
-      "calls": 7.087378640776699,
-      "cost_usd": 0.00045829689320388343,
-      "cost_usd_total": 0.047204579999999996,
-      "tokens_per_correct": 5141.423529411764,
+      "tokens": 5025.90625,
+      "prompt_tokens": 3506.6741071428573,
+      "completion_tokens": 1519.232142857143,
+      "calls": 6.973214285714286,
+      "cost_usd": 0.0005750161607142857,
+      "cost_usd_total": 0.12880361999999998,
+      "tokens_per_correct": 6433.16,
       "no_answer_tag": 0,
-      "wall_s": 6.062718446601942,
+      "wall_s": 9.077946428571428,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 103
+       "completed": 224
       }
      }
     },
     "paired": {
      "direct": {
-      "shared": 103,
-      "ours_only": 71,
-      "theirs_only": 0,
-      "p_mcnemar": 8.470329472543003e-22
+      "shared": 224,
+      "ours_only": 117,
+      "theirs_only": 8,
+      "p_mcnemar": 5.928488920821206e-26
      },
      "cot": {
-      "shared": 103,
-      "ours_only": 34,
-      "theirs_only": 2,
-      "p_mcnemar": 1.941225491464138e-08
+      "shared": 224,
+      "ours_only": 47,
+      "theirs_only": 7,
+      "p_mcnemar": 2.2918642095248742e-08
      },
      "fixed": {
-      "shared": 103,
-      "ours_only": 6,
-      "theirs_only": 1,
-      "p_mcnemar": 0.125
+      "shared": 224,
+      "ours_only": 12,
+      "theirs_only": 9,
+      "p_mcnemar": 0.6636238098144531
      }
     }
    },
@@ -378,111 +379,223 @@
    "mmlu-pro": {
     "methods": {
      "cot": {
-      "n": 4,
-      "correct": 2,
-      "accuracy": 0.5,
+      "n": 70,
+      "correct": 46,
+      "accuracy": 0.6571428571428571,
       "ci95": [
-       0.15003898915214947,
-       0.8499610108478506
+       0.5403954969794421,
+       0.7575401119773312
       ],
-      "tokens": 793.25,
-      "prompt_tokens": 313.5,
-      "completion_tokens": 479.75,
+      "tokens": 1209.7428571428572,
+      "prompt_tokens": 280.0,
+      "completion_tokens": 929.7428571428571,
       "calls": 1.0,
-      "cost_usd": 0.00013395,
-      "cost_usd_total": 0.0005358,
-      "tokens_per_correct": 1586.5,
-      "no_answer_tag": 0,
-      "wall_s": 3.6825,
+      "cost_usd": 0.00023993828571428573,
+      "cost_usd_total": 0.01679568,
+      "tokens_per_correct": 1840.9130434782608,
+      "no_answer_tag": 10,
+      "wall_s": 4.513428571428571,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 4
+       "completed": 70
       }
      },
      "direct": {
-      "n": 4,
-      "correct": 2,
-      "accuracy": 0.5,
+      "n": 70,
+      "correct": 32,
+      "accuracy": 0.45714285714285713,
       "ci95": [
-       0.15003898915214947,
-       0.8499610108478506
+       0.3457274259756359,
+       0.5730174079452441
       ],
-      "tokens": 307.5,
-      "prompt_tokens": 305.5,
-      "completion_tokens": 2.0,
+      "tokens": 281.2,
+      "prompt_tokens": 272.0,
+      "completion_tokens": 9.2,
       "calls": 1.0,
-      "cost_usd": 1.8809999999999998e-05,
-      "cost_usd_total": 7.523999999999999e-05,
-      "tokens_per_correct": 615.0,
-      "no_answer_tag": 4,
-      "wall_s": 0.3925,
+      "cost_usd": 1.8528e-05,
+      "cost_usd_total": 0.00129696,
+      "tokens_per_correct": 615.125,
+      "no_answer_tag": 35,
+      "wall_s": 0.41814285714285715,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 4
+       "completed": 70
       }
      },
      "fixed": {
-      "n": 4,
-      "correct": 2,
-      "accuracy": 0.5,
+      "n": 70,
+      "correct": 54,
+      "accuracy": 0.7714285714285715,
       "ci95": [
-       0.15003898915214947,
-       0.8499610108478506
+       0.6604966840601509,
+       0.8541193677742756
       ],
-      "tokens": 4081.5,
-      "prompt_tokens": 2798.5,
-      "completion_tokens": 1283.0,
+      "tokens": 4451.714285714285,
+      "prompt_tokens": 2649.342857142857,
+      "completion_tokens": 1802.3714285714286,
       "calls": 4.0,
-      "cost_usd": 0.00047583,
-      "cost_usd_total": 0.00190332,
-      "tokens_per_correct": 8163.0,
+      "cost_usd": 0.0005915297142857143,
+      "cost_usd_total": 0.04140708,
+      "tokens_per_correct": 5770.740740740741,
       "no_answer_tag": 0,
-      "wall_s": 26.8,
+      "wall_s": 11.17542857142857,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 4
+       "completed": 70
       }
      },
      "puppeteer": {
-      "n": 3,
-      "correct": 2,
-      "accuracy": 0.6666666666666666,
+      "n": 70,
+      "correct": 52,
+      "accuracy": 0.7428571428571429,
       "ci95": [
-       0.2076596008020477,
-       0.9385080552796037
+       0.6297386985284517,
+       0.8307072425865616
       ],
-      "tokens": 3916.6666666666665,
-      "prompt_tokens": 2880.3333333333335,
-      "completion_tokens": 1036.3333333333333,
-      "calls": 5.333333333333333,
-      "cost_usd": 0.00042154,
-      "cost_usd_total": 0.00126462,
-      "tokens_per_correct": 5875.0,
+      "tokens": 6369.628571428571,
+      "prompt_tokens": 4076.0857142857144,
+      "completion_tokens": 2293.542857142857,
+      "calls": 6.8,
+      "cost_usd": 0.0007950154285714285,
+      "cost_usd_total": 0.05565108,
+      "tokens_per_correct": 8574.5,
       "no_answer_tag": 0,
-      "wall_s": 7.88,
+      "wall_s": 14.876285714285713,
       "policy_fallbacks": 0,
       "statuses": {
-       "completed": 3
+       "completed": 70
       }
      }
     },
     "paired": {
      "direct": {
-      "shared": 3,
-      "ours_only": 0,
-      "theirs_only": 0,
-      "p_mcnemar": 1.0
+      "shared": 70,
+      "ours_only": 23,
+      "theirs_only": 3,
+      "p_mcnemar": 8.797645568847656e-05
      },
      "cot": {
-      "shared": 3,
-      "ours_only": 0,
-      "theirs_only": 0,
-      "p_mcnemar": 1.0
+      "shared": 70,
+      "ours_only": 7,
+      "theirs_only": 1,
+      "p_mcnemar": 0.0703125
      },
      "fixed": {
-      "shared": 3,
-      "ours_only": 0,
-      "theirs_only": 0,
+      "shared": 70,
+      "ours_only": 2,
+      "theirs_only": 4,
+      "p_mcnemar": 0.6875
+     }
+    }
+   },
+   "bbh": {
+    "methods": {
+     "cot": {
+      "n": 54,
+      "correct": 38,
+      "accuracy": 0.7037037037037037,
+      "ci95": [
+       0.5717242709884697,
+       0.8086257486782021
+      ],
+      "tokens": 602.7962962962963,
+      "prompt_tokens": 209.66666666666666,
+      "completion_tokens": 393.1296296296296,
+      "calls": 1.0,
+      "cost_usd": 0.0001069311111111111,
+      "cost_usd_total": 0.00577428,
+      "tokens_per_correct": 856.6052631578947,
+      "no_answer_tag": 1,
+      "wall_s": 1.9096296296296298,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 54
+      }
+     },
+     "direct": {
+      "n": 54,
+      "correct": 22,
+      "accuracy": 0.4074074074074074,
+      "ci95": [
+       0.2867821208591458,
+       0.5403315065650943
+      ],
+      "tokens": 212.38888888888889,
+      "prompt_tokens": 201.66666666666666,
+      "completion_tokens": 10.722222222222221,
+      "calls": 1.0,
+      "cost_usd": 1.4673333333333332e-05,
+      "cost_usd_total": 0.00079236,
+      "tokens_per_correct": 521.3181818181819,
+      "no_answer_tag": 19,
+      "wall_s": 0.4287037037037037,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 54
+      }
+     },
+     "fixed": {
+      "n": 54,
+      "correct": 40,
+      "accuracy": 0.7407407407407407,
+      "ci95": [
+       0.6106910949571832,
+       0.8388134737397926
+      ],
+      "tokens": 3112.1111111111113,
+      "prompt_tokens": 2037.8333333333333,
+      "completion_tokens": 1074.2777777777778,
+      "calls": 4.0,
+      "cost_usd": 0.00038009666666666666,
+      "cost_usd_total": 0.02052522,
+      "tokens_per_correct": 4201.35,
+      "no_answer_tag": 0,
+      "wall_s": 5.856481481481482,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 54
+      }
+     },
+     "puppeteer": {
+      "n": 54,
+      "correct": 40,
+      "accuracy": 0.7407407407407407,
+      "ci95": [
+       0.6106910949571832,
+       0.8388134737397926
+      ],
+      "tokens": 4715.888888888889,
+      "prompt_tokens": 3488.203703703704,
+      "completion_tokens": 1227.6851851851852,
+      "calls": 6.888888888888889,
+      "cost_usd": 0.0005039366666666667,
+      "cost_usd_total": 0.02721258,
+      "tokens_per_correct": 6366.45,
+      "no_answer_tag": 0,
+      "wall_s": 7.246296296296297,
+      "policy_fallbacks": 0,
+      "statuses": {
+       "completed": 54
+      }
+     }
+    },
+    "paired": {
+     "direct": {
+      "shared": 54,
+      "ours_only": 23,
+      "theirs_only": 5,
+      "p_mcnemar": 0.0009122341871261597
+     },
+     "cot": {
+      "shared": 54,
+      "ours_only": 6,
+      "theirs_only": 4,
+      "p_mcnemar": 0.75390625
+     },
+     "fixed": {
+      "shared": 54,
+      "ours_only": 4,
+      "theirs_only": 4,
       "p_mcnemar": 1.0
      }
     }

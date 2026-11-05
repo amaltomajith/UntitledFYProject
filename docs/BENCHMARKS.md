@@ -4,8 +4,8 @@ A self-contained briefing. Hand this file to a person or a model as context. Eve
 block comes from a run file under `runs/` (gitignored, on the owner's machine) through
 `benchmarks/reasoning/report.py`, never typed by hand. Last updated 2026-11-05.
 
-**Status of the reasoning run:** see the first line of the reasoning block below. If it says `PARTIAL`, the run was
-still going when this file was generated, and the numbers will change.
+**Status of the reasoning run:** complete, 224 tasks, one seed, finished 2026-11-05 (the first line of the reasoning
+block below says so). Rescored from the stored replies with the final checkers: 0 of 896 rows changed.
 
 ---
 
@@ -37,10 +37,11 @@ cost**, against simpler baselines on the same model?
 
 ## 2. Summary of findings
 
-1. **Reasoning (thesis core):** the multi-agent engine beats single calls by a wide margin. On the tasks paired so
-   far it does **not** beat the fixed four-agent pipeline significantly, and it uses more tokens than the pipeline.
-   The gain shown is therefore from giving the model several steps to reason, not yet from the policy's choices. The
-   policy is untrained (see §3.5). Read the generated block for the current numbers.
+1. **Reasoning (thesis core), 224 tasks, one seed:** the puppeteer answered 78.1% correctly, against 60.3% for
+   one step-by-step call and 29.5% for one answer-only call (both p < 0.001). It does **not** beat the fixed
+   four-agent pipeline: 78.1% against 76.8%, 12 tasks only it got right against 9 only the pipeline got right,
+   McNemar p 0.66. It used about 52% more tokens than the pipeline (5,026 against 3,301 per task). The gain is from
+   giving the model several steps to reason, not from the policy's choices. The policy is untrained (see §3.5).
 2. **Build from a prompt (application):** the puppeteer **did not beat** a plain tool loop. It used 2 to 3 times the
    tokens and at best matched its pass rate. Its one lead is zero false success claims, but every puppeteer failure
    ended at the token limit, so this does not show its checks caught them.
@@ -105,22 +106,22 @@ orchestration.
 ### 3.4 Results
 
 <!-- reasoning:start -->
-Source: `runs/reasoning-nebius-lightning.json` · provider `nebius` · model `nvidia/Nemotron-3_5-Lightning` · thinking `off` · max_steps 4 · output cap 4096 per call (policy 1024) · seed [0] · 224 tasks · 333 scored rows · 0 provider-error rows excluded · PARTIAL · total 584,396 tokens, $0.0644
+Source: `runs/reasoning-nebius-lightning.json` · provider `nebius` · model `nvidia/Nemotron-3_5-Lightning` · thinking `off` · max_steps 4 · output cap 4096 per call (policy 1024) · seed [0] · 224 tasks · 896 scored rows · 0 provider-error rows excluded · complete · total 2,056,883 tokens, $0.2529
 
 **All four**
 
 | Method | Correct | Accuracy | 95% CI (Wilson) | Tokens/task | Prompt/task | Completion/task | Calls/task | $/task | Tokens per correct |
 |---|---|---|---|---|---|---|---|---|---|
-| direct (1 call, answer only) | 12/84 | 14.3% | 8.4% to 23.3% | 145 | 140 | 5 | 1.0 | $0.000010 | 1,014 |
-| cot (1 call, step by step) | 45/83 | 54.2% | 43.6% to 64.5% | 244 | 147 | 96 | 1.0 | $0.000032 | 450 |
-| fixed (Planner, Reasoning, Critic, Concluder) | 70/83 | 84.3% | 75.0% to 90.6% | 2,522 | 1,650 | 872 | 4.0 | $0.000308 | 2,991 |
-| puppeteer (core.Orchestrator) | 74/83 | 89.2% | 80.7% to 94.2% | 4,128 | 3,138 | 990 | 7.2 | $0.000426 | 4,630 |
+| direct (1 call, answer only) | 66/224 | 29.5% | 23.9% to 35.7% | 204 | 196 | 8 | 1.0 | $0.000014 | 692 |
+| cot (1 call, step by step) | 135/224 | 60.3% | 53.7% to 66.5% | 652 | 204 | 447 | 1.0 | $0.000120 | 1,081 |
+| fixed (Planner, Reasoning, Critic, Concluder) | 172/224 | 76.8% | 70.8% to 81.8% | 3,301 | 2,064 | 1,237 | 4.0 | $0.000421 | 4,299 |
+| puppeteer (core.Orchestrator) | 175/224 | 78.1% | 72.3% to 83.0% | 5,026 | 3,507 | 1,519 | 7.0 | $0.000575 | 6,433 |
 
 | Puppeteer vs | Shared tasks | Only puppeteer right | Only other right | Exact McNemar p |
 |---|---|---|---|---|
-| direct | 83 | 62 | 0 | < 0.001 |
-| cot | 83 | 31 | 2 | < 0.001 |
-| fixed | 83 | 4 | 0 | 0.125 |
+| direct | 224 | 117 | 8 | < 0.001 |
+| cot | 224 | 47 | 7 | < 0.001 |
+| fixed | 224 | 12 | 9 | 0.664 |
 
 **GSM8K**
 
@@ -141,22 +142,52 @@ Source: `runs/reasoning-nebius-lightning.json` · provider `nebius` · model `nv
 
 | Method | Correct | Accuracy | 95% CI (Wilson) | Tokens/task | Prompt/task | Completion/task | Calls/task | $/task | Tokens per correct |
 |---|---|---|---|---|---|---|---|---|---|
-| direct (1 call, answer only) | 5/34 | 14.7% | 6.4% to 30.1% | 148 | 142 | 7 | 1.0 | $0.000010 | 1,008 |
-| cot (1 call, step by step) | 17/33 | 51.5% | 35.2% to 67.5% | 239 | 148 | 91 | 1.0 | $0.000031 | 465 |
-| fixed (Planner, Reasoning, Critic, Concluder) | 24/33 | 72.7% | 55.8% to 84.9% | 2,560 | 1,678 | 882 | 4.0 | $0.000312 | 3,520 |
-| puppeteer (core.Orchestrator) | 27/33 | 81.8% | 65.6% to 91.4% | 4,441 | 3,255 | 1,186 | 7.4 | $0.000480 | 5,428 |
+| direct (1 call, answer only) | 5/50 | 10.0% | 4.3% to 21.4% | 148 | 141 | 7 | 1.0 | $0.000010 | 1,478 |
+| cot (1 call, step by step) | 23/50 | 46.0% | 33.0% to 59.6% | 328 | 149 | 178 | 1.0 | $0.000052 | 712 |
+| fixed (Planner, Reasoning, Critic, Concluder) | 32/50 | 64.0% | 50.1% to 75.9% | 2,699 | 1,705 | 994 | 4.0 | $0.000341 | 4,217 |
+| puppeteer (core.Orchestrator) | 36/50 | 72.0% | 58.3% to 82.5% | 4,584 | 3,175 | 1,409 | 7.2 | $0.000529 | 6,366 |
 
 | Puppeteer vs | Shared tasks | Only puppeteer right | Only other right | Exact McNemar p |
 |---|---|---|---|---|
-| direct | 33 | 22 | 0 | < 0.001 |
-| cot | 33 | 11 | 1 | 0.006 |
-| fixed | 33 | 3 | 0 | 0.250 |
+| direct | 50 | 31 | 0 | < 0.001 |
+| cot | 50 | 14 | 1 | < 0.001 |
+| fixed | 50 | 5 | 1 | 0.219 |
+
+**MMLU-Pro**
+
+| Method | Correct | Accuracy | 95% CI (Wilson) | Tokens/task | Prompt/task | Completion/task | Calls/task | $/task | Tokens per correct |
+|---|---|---|---|---|---|---|---|---|---|
+| direct (1 call, answer only) | 32/70 | 45.7% | 34.6% to 57.3% | 281 | 272 | 9 | 1.0 | $0.000019 | 615 |
+| cot (1 call, step by step) | 46/70 | 65.7% | 54.0% to 75.8% | 1,210 | 280 | 930 | 1.0 | $0.000240 | 1,841 |
+| fixed (Planner, Reasoning, Critic, Concluder) | 54/70 | 77.1% | 66.0% to 85.4% | 4,452 | 2,649 | 1,802 | 4.0 | $0.000592 | 5,771 |
+| puppeteer (core.Orchestrator) | 52/70 | 74.3% | 63.0% to 83.1% | 6,370 | 4,076 | 2,294 | 6.8 | $0.000795 | 8,574 |
+
+| Puppeteer vs | Shared tasks | Only puppeteer right | Only other right | Exact McNemar p |
+|---|---|---|---|---|
+| direct | 70 | 23 | 3 | < 0.001 |
+| cot | 70 | 7 | 1 | 0.070 |
+| fixed | 70 | 2 | 4 | 0.688 |
+
+**BBH**
+
+| Method | Correct | Accuracy | 95% CI (Wilson) | Tokens/task | Prompt/task | Completion/task | Calls/task | $/task | Tokens per correct |
+|---|---|---|---|---|---|---|---|---|---|
+| direct (1 call, answer only) | 22/54 | 40.7% | 28.7% to 54.0% | 212 | 202 | 11 | 1.0 | $0.000015 | 521 |
+| cot (1 call, step by step) | 38/54 | 70.4% | 57.2% to 80.9% | 603 | 210 | 393 | 1.0 | $0.000107 | 857 |
+| fixed (Planner, Reasoning, Critic, Concluder) | 40/54 | 74.1% | 61.1% to 83.9% | 3,112 | 2,038 | 1,074 | 4.0 | $0.000380 | 4,201 |
+| puppeteer (core.Orchestrator) | 40/54 | 74.1% | 61.1% to 83.9% | 4,716 | 3,488 | 1,228 | 6.9 | $0.000504 | 6,366 |
+
+| Puppeteer vs | Shared tasks | Only puppeteer right | Only other right | Exact McNemar p |
+|---|---|---|---|---|
+| direct | 54 | 23 | 5 | < 0.001 |
+| cot | 54 | 6 | 4 | 0.754 |
+| fixed | 54 | 4 | 4 | 1.000 |
 
 **What the puppeteer's policy did**
 
-- Episodes: 83; mean agent steps 3.61; statuses {'completed': 83}.
-- First agent chosen: {'ReasoningAgent': 56, 'PlannerAgent': 27}.
-- Agent activations overall: {'ReasoningAgent': 142, 'ConcluderAgent': 83, 'PlannerAgent': 46, 'CriticAgent': 29}.
+- Episodes: 224; mean agent steps 3.49; statuses {'completed': 224}.
+- First agent chosen: {'ReasoningAgent': 188, 'PlannerAgent': 36}.
+- Agent activations overall: {'ReasoningAgent': 430, 'ConcluderAgent': 224, 'PlannerAgent': 76, 'CriticAgent': 51}.
 - Policy replies that named no known agent (engine fell back to the first agent): 0.
 
 <!-- reasoning:end -->
@@ -166,13 +197,20 @@ Source: `runs/reasoning-nebius-lightning.json` · provider `nebius` · model `nv
 - **Single calls are weak here because thinking is off.** With no room to reason, `direct` mostly guesses on maths.
   This is a property of the setup, and it is why the comparison that matters for the thesis is **puppeteer against
   fixed**: same agents, same budget per call, the policy's choices the only difference.
-- **Puppeteer against fixed** is the test of orchestration. Check the McNemar row: a p above 0.05 means no
-  significant difference on these tasks.
-- **Tokens:** the puppeteer spends more than the fixed pipeline because each step adds a policy call, and the
-  agents' context grows with every step (`Memory.get_context_for_agent` resends all prior steps).
+- **Puppeteer against fixed** is the test of orchestration, and it shows **no significant difference**: p 0.66 over
+  all 224 tasks, and p above 0.2 on every dataset. The puppeteer is ahead on GSM-Hard (72% against 64%, p 0.22) and
+  behind on MMLU-Pro (74.3% against 77.1%, p 0.69); neither is significant.
+- **Tokens:** the puppeteer spends about 52% more than the fixed pipeline, because each step adds a policy call and
+  the agents' context grows with every step (`Memory.get_context_for_agent` resends all prior steps). Per correct
+  answer: 6,433 tokens against 4,299.
 - **The policy is untrained.** It is the LLM policy with the engine's default prompt. The core's "REINFORCE"
   (`training/reinforce.py`) is prompt-space improvement, not gradient training, and was not run for this benchmark.
-- The policy never chose the Terminator in the episodes so far, and never named an unknown agent.
+- **What the policy did:** it opened with the Reasoning agent in 188 of 224 episodes, used the Critic only 51 times,
+  never chose the Terminator, and never named an unknown agent. Episodes averaged 3.5 agent steps, against the fixed
+  pipeline's 4, so the policy mostly reasoned repeatedly rather than critiquing.
+- **The partial figures quoted before the run finished were higher** (about 91% and 87% on the first 306 rows),
+  because those rows were all of GSM8K, the easiest set here for the multi-agent methods, and the first 27 GSM-Hard
+  tasks. Only the numbers above are final.
 
 ### 3.6 Not run, and why
 
@@ -297,9 +335,8 @@ not been compared with the heuristic policy. The assistant's own `LinearAssistan
 
 ## 7. Open items
 
-1. Finish the reasoning run if this file says `PARTIAL`, then regenerate this file and the site.
-2. More seeds (3 or more), then a thinking-on run and a larger model (`nvidia/nemotron-3-super-120b-a12b`).
-3. Train the core policy for real and compare trained against untrained on the same subsets.
-4. Bound the agents' context in `core/memory.py`, the main token cost of the puppeteer here.
-5. Tools for the core agents, which GAIA would need.
-6. Fresh PCodeBench-Build tasks with 3 seeds, so Build becomes a real test set.
+1. More seeds (3 or more), then a thinking-on run and a larger model (`nvidia/nemotron-3-super-120b-a12b`).
+2. Train the core policy for real and compare trained against untrained on the same subsets.
+3. Bound the agents' context in `core/memory.py`, the main token cost of the puppeteer here.
+4. Tools for the core agents, which GAIA would need.
+5. Fresh PCodeBench-Build tasks with 3 seeds, so Build becomes a real test set.
