@@ -9,6 +9,11 @@ import { InstallTabs } from "@/components/InstallTabs";
 import { IDE } from "@/lib/content";
 import { IdeError, ideCall, post, readToken, useIde, type IdeState, type Mode, type IdeClient } from "@/lib/ide";
 import { BottomPanel, type BottomTab } from "./BottomPanel";
+import { CommandPalette, type PaletteCommand } from "./CommandPalette";
+import { ModelPicker } from "./ModelPicker";
+import { RunPill } from "./RunPill";
+import { Settings, type SettingsSection } from "./Settings";
+import { StartPage } from "./StartPage";
 import { MemoryGraph } from "./MemoryGraph";
 import { LiveLine, LiveView } from "./LiveView";
 import { Chat } from "./Chat";
@@ -30,7 +35,14 @@ const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false, loading: 
 const DiffEditor = dynamic(() => import("./CodeEditor").then((m) => m.DiffEditor), { ssr: false, loading: Loading });
 
 type FileTab = { kind: "file"; path: string; content: string | null; saved: string; reason?: string };
-type Tab = FileTab | { kind: "changes" } | { kind: "preview" } | { kind: "graph" } | { kind: "live" } | { kind: "terminal"; id: string };
+type Tab =
+  | FileTab
+  | { kind: "changes" }
+  | { kind: "preview" }
+  | { kind: "graph" }
+  | { kind: "live" }
+  | { kind: "settings" }
+  | { kind: "terminal"; id: string };
 type Changes = { request: string | null; files: { path: string; before: string | null; after: string | null }[] };
 type FileReply = { path: string; content: string | null; reason?: string };
 
@@ -39,6 +51,7 @@ type Listing = { folders: FolderRow[]; saved: string[] };
 const SIDE_MIN = 170;
 const RETRY_MS = 1500;
 const FOLDER_KEY = "pcode-ide-folder";
+const PALETTE_EVENT = "pcode:palette";
 const tabId = (tab: Tab) => (tab.kind === "file" ? tab.path : tab.kind === "terminal" ? `terminal:${tab.id}` : tab.kind);
 
 // Saved panel sizes are a convenience; a blocked localStorage just means the defaults.
@@ -67,7 +80,7 @@ function terminalPrompt(project: string) {
   return `${project.length > 36 ? `${parts[0]}\\...\\${leaf}` : project}>`;
 }
 
-function ChangesPane({ client, tick }: { client: IdeClient; tick: number }) {
+function ChangesPane({ client, tick, focus }: { client: IdeClient; tick: number; focus: string | null }) {
   const [changes, setChanges] = useState<Changes | null>(null);
   const [picked, setPicked] = useState(0);
 
@@ -75,6 +88,11 @@ function ChangesPane({ client, tick }: { client: IdeClient; tick: number }) {
     ideCall<Changes>(client, "changes").then(setChanges, () => setChanges({ request: null, files: [] }));
     setPicked(0);
   }, [client, tick]);
+
+  useEffect(() => {
+    const at = changes?.files.findIndex((f) => f.path === focus) ?? -1;
+    if (at >= 0) setPicked(at);
+  }, [changes, focus]);
 
   if (!changes) return <Loading />;
   if (!changes.files.length) return <div className="ide-pane__note">{IDE.editor.noChanges}</div>;
@@ -116,6 +134,9 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
   const [bottomTab, setBottomTab] = useState<BottomTab>("terminal");
   const [reveal, setReveal] = useState<{ path: string; line: number; end?: number } | null>(null);
   const [jump, setJump] = useState<{ turn: number } | null>(null);
+  const [section, setSection] = useState<SettingsSection>("models");
+  const [palette, setPalette] = useState<string | null>(null);   // the text it opens with, or closed
+  const [focusChange, setFocusChange] = useState<string | null>(null);
   const sidePanel = usePanelRef();
   const bottomPanel = usePanelRef();
   const editorPanel = usePanelRef();
@@ -156,6 +177,37 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
     if (panel?.isCollapsed()) panel.expand();
     else panel?.collapse();
   };
+
+  const openSettings = useCallback((next: SettingsSection = "models") => {
+    setSection(next);
+    setTabs((all) => (all.some((t) => t.kind === "settings") ? all : [...all, { kind: "settings" }]));
+    setActive("settings");
+  }, []);
+
+  useEffect(() => {
+    if (!shown) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        setPalette(e.shiftKey ? ">" : "");
+      } else if (key === "," && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSettings();
+      }
+    };
+    const fromBar = (e: Event) => setPalette((e as CustomEvent<string>).detail ?? "");
+    // Capture phase: a focused terminal would otherwise take these keys, as VS Code does not let it.
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener(PALETTE_EVENT, fromBar);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener(PALETTE_EVENT, fromBar);
+    };
+  }, [shown, openSettings]);
 
   useEffect(() => {
     if (!shown) return;
@@ -324,6 +376,32 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
     openUpdates: () => updates?.setOpen(true),
   });
 
+  const paletteCommands: PaletteCommand[] = state
+    ? [
+        { id: "settings", label: IDE.palette.items.settings, keys: "Ctrl+,", run: () => openSettings() },
+        { id: "models", label: IDE.palette.items.models, run: () => openSettings("models") },
+        { id: "local", label: IDE.settings.sections.local, run: () => openSettings("local") },
+        { id: "start", label: IDE.palette.items.start, run: () => setActive(null) },
+        { id: "terminal", label: IDE.palette.items.newTerminal, keys: "Ctrl+Shift+`", run: () => {
+            if (bottomPanel.current?.isCollapsed()) bottomPanel.current.expand();
+            setBottomTab("terminal");
+            void terminals.create();
+          } },
+        { id: "panel", label: IDE.palette.items.toggleTerminal, keys: "Ctrl+`", run: toggleBottom },
+        { id: "side", label: IDE.palette.items.toggleSide, run: () => (sideOpen ? sidePanel.current?.collapse() : sidePanel.current?.expand()) },
+        { id: "changes", label: IDE.palette.items.changes, run: () => show({ kind: "changes" }) },
+        { id: "graph", label: IDE.palette.items.graph, run: () => show({ kind: "graph" }) },
+        { id: "live", label: IDE.palette.items.live, run: () => show({ kind: "live" }) },
+        { id: "folder", label: IDE.palette.items.openFolder, run: () => void commands.run("/folder") },
+        state.private.on
+          ? { id: "private", label: IDE.palette.items.privateOff, run: () => setPrivate(false) }
+          : { id: "private", label: IDE.palette.items.privateOn, run: () => setPrivate(true) },
+        ...IDE.commands.list
+          .filter((c) => !c.needsArg && !c.args?.startsWith("<"))
+          .map((c) => ({ id: `/${c.name}`, label: `/${c.name}`, hint: c.hint, run: () => void commands.run(`/${c.name}`) })),
+      ]
+    : [];
+
   if (link === "denied") {
     return <NoToken />;
   }
@@ -350,6 +428,10 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
 
   const tab = tabs.find((t) => tabId(t) === active) ?? null;
   const locked = view.busy;
+  const lastDone = (() => {
+    const last = view.items[view.items.length - 1];
+    return last?.kind === "done" ? last : null;
+  })();
   const rowOf = (id: string) => terminals.rows.find((row) => row.id === id);
   const tabName = (t: Tab) => {
     if (t.kind === "file") return t.path.split("/").pop() ?? t.path;
@@ -366,7 +448,13 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
         <Command label={IDE.smallCommand} cmd="pcode" />
       </div>
       <div className="ide__body">
-        <ActivityBar view={side} open={sideOpen} onPick={pickView} onGraph={() => show({ kind: "graph" })} />
+        <ActivityBar
+          view={side}
+          open={sideOpen}
+          onPick={pickView}
+          onGraph={() => show({ kind: "graph" })}
+          onSettings={() => openSettings()}
+        />
         <Group
           orientation="horizontal"
           id={`ide-main-${client.workspace}`}
@@ -455,6 +543,7 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
                             {t.kind === "terminal" ? <Codicon name={shellIcon(rowOf(t.id)?.icon ?? "terminal")} /> : null}
                             {t.kind === "graph" ? <Codicon name="type-hierarchy" /> : null}
                             {t.kind === "live" ? <Codicon name="pulse" /> : null}
+                            {t.kind === "settings" ? <Codicon name="settings-gear" /> : null}
                             {name}
                             {dirty ? <span className="ide-tab__dirty" title={IDE.editor.unsaved} aria-label={IDE.editor.unsaved}>●</span> : null}
                           </button>
@@ -478,8 +567,18 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
                   </div>
                   {locked && tab?.kind === "file" ? <p className="ide-lock">{IDE.editor.locked}</p> : null}
                   <div className="ide-pane">
-                    {tab === null ? <div className="ide-pane__note">{IDE.editor.empty}</div> : null}
-                    {tab?.kind === "changes" ? <ChangesPane client={client} tick={view.fileTick} /> : null}
+                    {tab === null ? (
+                      <StartPage
+                        state={state}
+                        workspace={client.workspace}
+                        onSettings={() => openSettings("models")}
+                        onPalette={() => setPalette(">")}
+                      />
+                    ) : null}
+                    {tab?.kind === "changes" ? <ChangesPane client={client} tick={view.fileTick} focus={focusChange} /> : null}
+                    {tab?.kind === "settings" ? (
+                      <Settings client={client} state={state} busy={view.busy} section={section} onSection={setSection} onState={setState} />
+                    ) : null}
                     {tab?.kind === "graph" ? (
                       <MemoryGraph
                         client={client}
@@ -523,6 +622,16 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
                         <span>{IDE.editor.dropEditor}</span>
                       </div>
                     ) : null}
+                    <RunPill
+                      live={view.live}
+                      busy={view.busy}
+                      done={lastDone}
+                      canUndo={state.can_undo}
+                      onStop={() => send({ type: "cancel" })}
+                      onLive={() => show({ kind: "live" })}
+                      onReview={() => show({ kind: "changes" })}
+                      onUndo={() => void undo().then(refresh)}
+                    />
                   </div>
                 </main>
               </Panel>
@@ -569,7 +678,11 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
               jump={jump}
               onJumped={() => setJump(null)}
               view={view}
-              model={state.models.quality ?? state.provider ?? ""}
+              workspace={client.workspace}
+              local={state.private.on}
+              picker={
+                <ModelPicker client={client} state={state} busy={view.busy} onState={setState} onManage={() => openSettings("models")} />
+              }
               canUndo={state.can_undo}
               claim={state.private.on ? [state.private.claim, state.private.warning].filter(Boolean).join(" ") : null}
               canApprove={state.pending_plan}
@@ -581,12 +694,24 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
               onAnswer={(id, approved) => send({ type: "answer", id, approved })}
               onUndo={() => void undo().then(refresh)}
               onReview={() => show({ kind: "changes" })}
+              onOpenFile={(path) => {
+                setFocusChange(path);
+                show({ kind: "changes" });
+              }}
               onApply={(runId) => void applyFix(runId)}
               onResume={(id) => void commands.resume(id).catch((e) => setPanelError(e instanceof IdeError ? e.message : IDE.setup.failed))}
             />
           </Panel>
         </Group>
       </div>
+      <CommandPalette
+        open={palette !== null}
+        initial={palette ?? ""}
+        files={files}
+        commands={paletteCommands}
+        onOpenFile={(path) => void openFile(path)}
+        onClose={() => setPalette(null)}
+      />
       <footer className="ide-status" aria-label={IDE.status.label}>
         <span className="ide-status__link" data-state={link} role="status">
           <Codicon name={link === "open" ? "pass" : "warning"} />
@@ -612,6 +737,11 @@ function Workspace({ client, active: shown, onStatus, onGone }: WorkspaceProps) 
         <span className="ide__tokens" title={state.private.on ? IDE.tokensHintLocal : IDE.tokensHint}>
           {IDE.tokens(view.totalTokens || state.tokens)}
         </span>
+        {!state.private.on && state.cost_usd !== null && state.cost_usd !== undefined ? (
+          <span className="ide__tokens" title={IDE.chat.costHint}>
+            {IDE.chat.cost(state.cost_usd, false)}
+          </span>
+        ) : null}
         <div className="ide__mode" role="group" aria-label={IDE.mode.label}>
           {(["plan", "ask", "auto"] as const).map((mode) => (
             <button
@@ -736,26 +866,32 @@ function Folders({ token }: { token: string }) {
   const report = useCallback((id: string, next: FolderStatus) => setStatus((all) => ({ ...all, [id]: next })), []);
   const projectOf = (folder: FolderRow) => status[folder.id]?.project ?? folder.project;
 
+  // One tab action at a time: a second click on a saved tab while it opens would open the folder twice.
+  const acting = useRef(false);
   const act = async (work: () => Promise<void>) => {
+    if (acting.current) return;
+    acting.current = true;
     setError(null);
     try {
       await work();
     } catch (e) {
       setError(e instanceof IdeError ? e.message : IDE.setup.failed);
+    } finally {
+      acting.current = false;
     }
   };
 
-  const close = (id: string) =>
-    act(async () => {
-      const left = await ideCall<Listing>(server, `workspaces/${id}`, { method: "DELETE" });
-      const at = list?.folders.findIndex((folder) => folder.id === id) ?? 0;
-      await disposeAll(id);
-      setList(left);
-      setStatus(({ [id]: _closed, ...rest }) => rest);
-      // Closing the last folder leaves an empty tab under the same id, so it starts again.
-      if (left.folders.some((folder) => folder.id === id)) setReopened((all) => ({ ...all, [id]: (all[id] ?? 0) + 1 }));
-      setActive((now) => (now === id ? left.folders[Math.min(at, left.folders.length - 1)].id : now));
-    });
+  const shut = async (id: string) => {
+    const left = await ideCall<Listing>(server, `workspaces/${id}`, { method: "DELETE" });
+    const at = list?.folders.findIndex((folder) => folder.id === id) ?? 0;
+    await disposeAll(id);
+    setList(left);
+    setStatus(({ [id]: _closed, ...rest }) => rest);
+    // Closing the last folder leaves an empty tab under the same id, so it starts again.
+    if (left.folders.some((folder) => folder.id === id)) setReopened((all) => ({ ...all, [id]: (all[id] ?? 0) + 1 }));
+    setActive((now) => (now === id ? left.folders[Math.min(at, left.folders.length - 1)].id : now));
+  };
+  const close = (id: string) => act(() => shut(id));
 
   const opened = (reply: Listing & { id: string }) => {
     setList(reply);
@@ -773,7 +909,7 @@ function Folders({ token }: { token: string }) {
     act(async () => {
       const empty = list?.folders.find((folder) => !projectOf(folder));
       opened(await post<Listing & { id: string }>(server, "workspaces", { path }));
-      if (empty) await close(empty.id);
+      if (empty) await shut(empty.id);
     });
 
   const forget = (path: string) => act(async () => setList(await post<Listing>(server, "workspaces/forget", { path })));
@@ -789,6 +925,16 @@ function Folders({ token }: { token: string }) {
             <span className="wordmark__mark" aria-hidden="true" />
             <span className="ide__brand">CompactCode</span>
           </Link>
+          <button
+            type="button"
+            className="ide-search-box"
+            onClick={() => window.dispatchEvent(new CustomEvent(PALETTE_EVENT, { detail: "" }))}
+            aria-label={IDE.palette.search}
+          >
+            <Codicon name="search" />
+            <span>{IDE.palette.search}</span>
+            <kbd>Ctrl+P</kbd>
+          </button>
           <FolderTabs
             folders={list.folders}
             saved={list.saved}

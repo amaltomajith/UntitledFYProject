@@ -288,3 +288,21 @@ def test_private_and_cloud_folders_keep_their_own_sessions(tmp_path):
     assert hub.spaces.hubs[two].session is not hub.session
     assert client.get("/api/ide/sessions", headers=on(two)).json()["sessions"] == []
     hub.close()
+
+
+def test_two_clicks_on_a_saved_tab_open_one_folder(ide, tmp_path, monkeypatch):
+    """A second click while the first open still runs used to race it: two git inits on one shadow folder, a 500."""
+    client, hub = ide
+    path = folder(tmp_path, "slow")
+    real = IdeHub._new_session
+    monkeypatch.setattr(IdeHub, "_new_session", lambda self, f: (time.sleep(0.3), real(self, f))[1])
+    replies = []
+    clicks = [threading.Thread(target=lambda: replies.append(client.post("/api/ide/workspaces", json={"path": path})))
+              for _ in range(4)]
+    for click in clicks:
+        click.start()
+    for click in clicks:
+        click.join()
+    assert [r.status_code for r in replies] == [201] * 4
+    assert len({r.json()["id"] for r in replies}) == 1
+    assert [f["project"] for f in client.get("/api/ide/workspaces").json()["folders"]].count(path) == 1

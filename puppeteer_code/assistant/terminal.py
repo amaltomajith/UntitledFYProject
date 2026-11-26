@@ -19,7 +19,8 @@ from rich.markdown import Markdown
 from rich.markup import escape
 
 from puppeteer_code.assistant.session import AssistantSession
-from puppeteer_code.assistant.setup import KEY_HELP, is_private, load_keys, pick_provider, remember_private, save_key
+from puppeteer_code.assistant.setup import (KEY_HELP, PROVIDER_KEYS, PROVIDER_NAMES, is_private, load_keys,
+                                             pick_provider, remember_private, save_key)
 from puppeteer_code.privacy import OUTSIDE, private_claim
 
 MAX_OUTPUT_LINES = 12
@@ -314,17 +315,28 @@ class Terminal:
 
 
 def _ask_for_key(home: Optional[Path]) -> Optional[str]:
-    print("Puppeteer-Code needs an API key for an AI model, and none is set.")
-    print(f"Groq has a free tier. Get a key at {KEY_HELP['groq']}")
+    names = list(PROVIDER_KEYS)
+    print("CompactCode needs a model. With no key, run it on this computer instead: pcode --private")
+    print("Or pick a cloud provider for an API key:")
+    for i, name in enumerate(names, 1):
+        print(f"  {i}. {PROVIDER_NAMES[name]:<11} {KEY_HELP[name]}")
     try:
-        value = getpass.getpass("Paste your Groq key (it will not show), or press Enter to quit: ")
-    except (EOFError, KeyboardInterrupt):
+        choice = input("Number (Enter to quit): ").strip()
+        if not choice:
+            return None
+        provider = names[int(choice) - 1]
+        value = getpass.getpass(f"Paste your {PROVIDER_NAMES[provider]} key (it will not show): ")
+    except (EOFError, KeyboardInterrupt, ValueError, IndexError):
         return None
     if not value.strip():
         return None
-    save_key("groq", value, home)
+    try:
+        save_key(provider, value, home)
+    except ValueError as e:
+        print(f"Not saved: {e}.")
+        return None
     print("Saved to your .pcode folder.")
-    return "groq"
+    return provider
 
 
 def run_chat(args) -> int:

@@ -9,6 +9,9 @@ It uses http.client on purpose: that library cannot follow a redirect or read a
 proxy setting, so neither can happen by accident. It always streams, which keeps a
 long reply from timing out, and it reads on a worker thread so that Stop still works
 while a model is loading and no bytes are arriving.
+
+A model is downloaded (`pull`) only when the person clicks Download in setup or
+Settings, never during a request and never because a model asked for one.
 """
 
 from __future__ import annotations
@@ -179,6 +182,21 @@ class OllamaClient:
     def loaded(self) -> list[dict]:
         return self._json("GET", "/api/ps").get("models", [])
 
+    def pull(self, model: str, on_progress: Callable[[str, int, int], None]) -> None:
+        """Download a model from ollama.com, reporting (status, bytes done, bytes in all). Only on a click.
+        Stop works through `cancel`, as in chat. A cloud name is refused before anything is sent."""
+        if is_cloud_name(model):
+            raise PrivacyError(f"{model} is a cloud model. Private mode only runs models on this computer.")
+        layers: dict[str, tuple[int, int]] = {}     # each file of a model reports on its own
+        for chunk in self._stream({"model": model, "stream": True}, "/api/pull"):
+            if chunk.get("error"):
+                raise RuntimeError(f"The download failed: {str(chunk['error'])[:200]}")
+            if chunk.get("digest") and chunk.get("total"):
+                layers[chunk["digest"]] = (int(chunk.get("completed") or 0), int(chunk["total"]))
+            done = sum(c for c, _ in layers.values())
+            on_progress(str(chunk.get("status", "")), done, sum(t for _, t in layers.values()))
+        self.guard = ModelGuard(self.installed, self._show)     # the new model is known from now on
+
     # ── chat ─────────────────────────────────────────────────────────────────
 
     def _room(self, messages: list[dict], tools: Optional[list[dict]], max_tokens: int) -> int:
@@ -190,9 +208,9 @@ class OllamaClient:
                                f"{self.num_ctx}. Ask for something smaller.")
         return min(max_tokens, room)
 
-    def _read(self, conn: http.client.HTTPConnection, body: dict, chunks: queue.Queue) -> None:
+    def _read(self, conn: http.client.HTTPConnection, body: dict, chunks: queue.Queue, path: str = "/api/chat") -> None:
         try:
-            conn.request("POST", "/api/chat", json.dumps(body), {"Content-Type": "application/json"})
+            conn.request("POST", path, json.dumps(body), {"Content-Type": "application/json"})
             conn.sock.settimeout(READ_TIMEOUT)
             response = conn.getresponse()
             if response.status != 200:
@@ -206,10 +224,10 @@ class OllamaClient:
         except Exception as e:      # the reader must always report, or chat() would wait for ever
             chunks.put(e)
 
-    def _stream(self, body: dict):
+    def _stream(self, body: dict, path: str = "/api/chat"):
         conn = http.client.HTTPConnection(self.host, self.port, timeout=CONNECT_TIMEOUT)
         chunks: queue.Queue = queue.Queue()
-        threading.Thread(target=self._read, args=(conn, body, chunks), daemon=True).start()
+        threading.Thread(target=self._read, args=(conn, body, chunks, path), daemon=True).start()
         try:
             while True:
                 if self.cancel is not None and self.cancel.is_set():
@@ -298,8 +316,35 @@ class OllamaClient:
             reply["cut_off"] = True     # more of the same would be cut off the same way
 
 
+def install_places() -> list[Path]:
+    """Where the official installers put Ollama. PATH only changes for shells started after an install."""
+    places = [Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"] if os.name == "nt" else []
+    if sys.platform == "darwin":
+        places.append(Path("/Applications/Ollama.app/Contents/Resources/ollama"))
+    if os.name != "nt":
+        places += [Path("/usr/local/bin/ollama"), Path("/usr/bin/ollama")]
+    return places
+
+
+def find_ollama() -> Optional[str]:
+    found = shutil.which("ollama")
+    if found:
+        return found
+    return next((str(p) for p in install_places() if p.is_file()), None)
+
+
+def ollama_version(binary: str) -> Optional[str]:
+    try:
+        done = subprocess.run([binary, "--version"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=10, env={k: v for k, v in scrubbed_env().items() if k.upper() not in _PROXY_VARS})
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"(\d+\.\d+\.\d+)", done.stdout + done.stderr)
+    return match.group(1) if match else None
+
+
 class LocalServer:
-    """pcode's own `ollama serve`, with cloud off. It is never the tray app, and it never pulls a model."""
+    """pcode's own `ollama serve`, with cloud off. It is never the tray app. It pulls a model only on a click."""
 
     def __init__(self, url: str, log: Path, binary: Optional[str] = None):
         check_address(url)
@@ -322,10 +367,7 @@ class LocalServer:
             conn.close()
 
     def _find_binary(self) -> str:
-        found = self.binary or shutil.which("ollama")
-        fallback = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
-        if not found and fallback.is_file():
-            found = str(fallback)
+        found = self.binary or find_ollama()
         if not found:
             raise PrivacyError("Ollama is not installed. Get it from https://ollama.com/download, then try again.")
         return found

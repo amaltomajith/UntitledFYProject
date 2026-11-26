@@ -72,7 +72,9 @@ copy .env.example .env            # then fill in keys (see §4)
 ```
 
 On Windows, `start-pcode.bat` does all of this and opens the IDE (see §8: not yet run from scratch).
-The IDE and `pcode` also ask for a key on first run and save it to `~/.pcode/.env`.
+The IDE's first run offers two paths: a model on this computer (Ollama, set up from the screen) or a cloud key for any
+of six providers, saved to `~/.pcode/.env`. `pcode` in a terminal asks for a key the same way. Settings (the gear, or
+Ctrl+,) adds, tests, replaces and removes keys later.
 
 ## 4. API keys and providers
 
@@ -80,6 +82,7 @@ The IDE and `pcode` also ask for a key on first run and save it to `~/.pcode/.en
 |---|---|---|
 | `NEBIUS_API_KEY` | **The default, in use since 2026-10-30.** Each person uses their own. Runs spend real credit. | https://tokenfactory.nebius.com. Run `pcode models` first: tier models resolve against the live catalog. |
 | `GROQ_API_KEY` | Optional. | Free at https://console.groq.com. Free tier per model: 1000 requests/day, 8000 tokens/min, and a daily token cap of about 200,000 tokens. It cannot finish PCodeBench-Build in a day. |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | Optional, added 2026-11-06. **None tested with a real key yet.** | Anthropic uses the native `anthropic` SDK (`puppeteer_code/anthropic_client.py`); the others are OpenAI-compatible subclasses in `core/agent.py`. OpenRouter prices come from its catalog. |
 | `TAVILY_API_KEY` | Optional, not set | Lets DocsSearchAgent search the web; without it, it falls back to `pydoc`. |
 
 - **The default provider is `nebius`.** The config is `puppeteer_code/models.yaml`; a `models.yaml` in
@@ -88,6 +91,9 @@ The IDE and `pcode` also ask for a key on first run and save it to `~/.pcode/.en
   - FAST = `nvidia/Nemotron-3_5-Lightning` ($0.06 in, $0.24 out per 1M tokens)
   - QUALITY = `nvidia/nemotron-3-super-120b-a12b` ($0.30 in, $0.90 out per 1M tokens)
 - Groq models: FAST = `openai/gpt-oss-20b`, QUALITY = `openai/gpt-oss-120b`.
+- OpenAI, Anthropic, Gemini and OpenRouter tier candidates are in `models.yaml`, resolved against each live catalog like
+  the others. Gemini prices are left empty (shown as "price unknown") because its published prices were introductory.
+  Nebius and Groq keep sending `temperature` and `max_tokens` exactly as before (`_sampling` in `core/agent.py`).
 - Override with `--fast-model` / `--quality-model`, which exist only on `bench`, `train` and `buildbench`.
 - **Private mode** is `provider: local` in `models.yaml`: no key, Ollama on `127.0.0.1:11435`, details in §6.
 - TLS: certificates are always verified (via `truststore`). On a proxy network, set
@@ -200,7 +206,10 @@ Three separate axes: permission (`plan | ask | auto`), effort (`fast | normal | 
   - `privacy.py` checks run inside `OllamaClient.chat()`, so `/model` cannot get round them. Cloud names are refused
     first, by name, because `/api/show` on one is proxied to ollama.com.
   - `ollama.py` uses `http.client`, which cannot follow a redirect or read a proxy. It starts its own `ollama serve`
-    on 11435 with `OLLAMA_NO_CLOUD=1`, and refuses a server that does not return 403 for a cloud name. It never pulls.
+    on 11435 with `OLLAMA_NO_CLOUD=1`, and refuses a server that does not return 403 for a cloud name.
+  - **Downloads (rule changed 2026-11-06 by the owner):** a model is pulled only when the user clicks it in first run or
+    Settings (`assistant/local_setup.py`, `POST /api/ide/local/pull`), never during a request. Cloud names are refused.
+    The wording is "Downloading the model from ollama.com. Your code is not sent."
   - Off in Private: the response cache, quota fallback, Tavily, `_pydoc` imports, Explorer and `start_server`. So
     Preview is off, and `/preview` and `/private` say so (Phase 7 decision: the pipe relay was not built). Limits come
     from the spec: 150,000 tokens, 1,800 s. The Responder is off too: code writes the reply (`_report`).
@@ -350,6 +359,7 @@ python -m puppeteer_code buildbench --provider groq --cache runs/cache/build --m
 # Reasoning benchmark for the thesis core (core.Orchestrator vs direct, cot, fixed); details in docs/BENCHMARKS.md
 python benchmarks/reasoning/datasets.py --check             # verify the 224 frozen tasks
 python -m benchmarks.reasoning.run --cache runs/cache/reasoning --out runs/reasoning-nebius-lightning.json --resume
+python -m benchmarks.reasoning.live [--limit 3 --steps | --task gsm-hard-259 | --explain]  # watch it, replayed: $0
 
 python -m puppeteer_code train --provider sim --episodes 200   # mechanism check only
 python -m puppeteer_code report --bench runs/<bench>.json --curve runs/<train>.json
@@ -366,7 +376,16 @@ python scripts/build_release.py   # after the site build: dist/release/ = wheel 
   `--weights checkpoints/pcode_linear_sim.json` until a real-model training run produces one.
 - `--seeds N` is a count, not a list.
 
-## 8. Status (2026-11-05)
+## 8. Status (2026-11-07)
+
+**First real install by the owner, 2026-11-05: opening a folder failed (fixed on the branch, not released).** `compactcode`
+from the real one-liner started, but clicking a saved folder tab gave a 500: `git init failed: cannot copy .../templates/
+description ... File exists`. Cause: nothing stopped a second click while the first open ran, so two opens of one folder ran
+`git init` on one shadow store at once (both stores were made in the same second). Fix: `Workspaces.opening` serialises
+opens (a second click finds the folder held and gets its tab), `Snapshots._init` takes a lock and retries once for another
+process, and the page ignores clicks while an open runs (`Opening...` on the button). Two new tests reproduced the exact error
+before the fix. `pytest tests -q`: 865 passed, 2 skipped, 5:17; `npx tsc --noEmit` clean. **The installed 0.2.0 still has the bug** until `v0.2.1` is released; the owner's two half-made stores now have
+`HEAD`, so those folders open with one click.
 
 **One-line install and updates, 2026-11-05: published.** Commit `4b390c9`, merged to `main`, tag `v0.2.0`, GitHub Release
 https://github.com/amaltomajith/UntitledFYProject/releases/tag/v0.2.0 (wheel, `SHA256SUMS`, both installers), site redeployed
@@ -402,6 +421,32 @@ terminal line and desktop notification.
   `application/octet-stream`; Windows PowerShell 5.1's `irm | iex` runs it anyway, so no `vercel.json` was needed.
 - **Not tested:** macOS; the desktop notification itself (Chrome's permission prompt blocks the automation); a real update from
   one published release to the next (only a local fake 0.2.1 so far). The first real one happens at `v0.2.1`.
+
+**Six providers, a local model with no key, and a finished IDE, 2026-11-06 to 11-07 (branch `ide-terminal-redesign`,
+uncommitted).** Every part of the plan is built. Not released: v0.2.0 users have none of it.
+- **Providers:** Nebius, Groq, OpenAI, Anthropic, Gemini, OpenRouter. Settings (gear, Ctrl+,) adds, tests, replaces and removes
+  keys, shown back only by their last 4 characters. **The four new ones have never had a real key.**
+- **Local with no key:** `hardware.py`, `local_models.py`, `assistant/local_setup.py`. Finds Ollama, offers the official install
+  in a visible terminal, labels which models fit, pulls only on a click, saves the choice in `~/.pcode/local.json`.
+- **IDE:** two-path first screen, Settings, model picker, palette (Ctrl+Shift+P) and quick open (Ctrl+P), markdown chat with
+  highlighted code and Copy, changed-files card, cost per turn (labelled "about"), start page, Console.log, floating pill.
+- **Bug fixed that v0.2.0 also has:** `compactcode` (`pcode ide --folder X`) with no key stopped with `409 no_key`. Now the
+  folder waits (`waiting_folder`) and opens with one click once a key or local model is set.
+- **Tests:** `pytest tests -q`: 931 passed, 2 skipped, 7:50, after the last Python change. `npx tsc --noEmit` clean, site built.
+  Scripted requests with live off compared byte for byte with `HEAD`: identical apart from pytest's timing line.
+- **Verified in headless Chromium (playwright-cli; the Chrome extension was not connected), never a result:** no key, then the
+  first screen; the local path found Ollama 0.40.15, an RTX 4060 with 8.0 GB, 15.3 GB memory; "Use this" on `qwen3.5:9b`; the
+  waiting folder opened in one click into Private. A placeholder key saved as "ends in 9a7c", its value absent from the page,
+  and Remove (inline confirm) cleared it from `.env`. With the mock: markdown table and code block, the honesty note,
+  changed-files card, cost, pill, Live tab, Console.log, Ctrl+P, `/undo` from the palette restoring the file, the picker,
+  phone width with no sideways scroll.
+- **Bugs that run found, now fixed:** Live listed `+0 -0` for writes that changed no lines (`toolbox._changed`; `file_diff` only,
+  so benchmarks are untouched); the picker said "Unknown provider." for `--provider mock`. Earlier pass: lost palette typing,
+  xterm taking Ctrl+P, "active In use", a clipped picker, "$0.0000", recommending the untested `qwen3:8b`, a repeated note.
+- **Not run:** a real request on this code with any cloud model; installing Ollama; a real pull with progress and cancel
+  (fakes only); a real request on the chosen local model through the new screens; macOS and Linux.
+
+**Live replay for the viva, 2026-11-07.** `benchmarks/reasoning/live.py` shows the reasoning benchmark task by task (question, gold, each method's parsed answer, tokens, agent path, a running score with Wilson CI and McNemar) and explains each dataset, method and metric. By default it replays the recorded replies from `runs/cache/reasoning/thinking-off/seed0` through the real `run_row`, so no network and no cost: the full run reproduced 896 of 896 rows exactly in 47 s. `--fresh` calls Nebius after a cost prompt, saves to `runs/reasoning-live-<time>.json` marked `demo`, and is never a result. The cache is local only, so a fresh clone can use `--explain` or `--fresh`. No test file was added.
 
 **Reasoning benchmark for the thesis core, 2026-11-05.** `benchmarks/reasoning/`, write-up in `docs/BENCHMARKS.md`.
 - Runs `core.Orchestrator` unchanged against `direct`, `cot` and `fixed` (Planner, Reasoning, Critic, Concluder) on 224
@@ -671,7 +716,12 @@ count. Still too few to claim learning. This trains Fix mode's `LinearPolicy`. T
   maps them. No deployment exists yet.
 - `runs/fix-20261030-183525.json` and `-183746.json` are real failed runs (Groq 429). They are not results.
 
-## 9. Next steps (in order, updated 2026-11-05)
+## 9. Next steps (in order, updated 2026-11-07)
+
+First, with the owner's go-ahead only: commit this branch, merge, bump `__version__` to 0.2.1 and tag. It carries the
+folder-open race fix and the no-key fix, which installed 0.2.0 copies still have. Before that, one real Nebius request
+through the IDE on the new code, and a real pull of a small model (about 0.5 GB) with the owner's OK.
+Then a smoke request on OpenAI, Anthropic, Gemini and OpenRouter as keys become available.
 
 Releases (since `v0.2.0`): bump `__version__` in `puppeteer_code/__init__.py`, commit, merge to `main`, then
 `git tag -a vX.Y.Z -m "<notes>"` on `main` and push the tag; the workflow publishes. Installed copies see it within a day.
@@ -752,6 +802,11 @@ has their own plan to make it novel, so ask them for it before building anything
 
 ## 11. Gotchas (learned the hard way)
 
+- **A test launcher that sets `USERPROFILE` to a fake home must create `AppData\Local` in it.** Otherwise Windows
+  PowerShell 5.1 gets an empty Local AppData path and writes `Microsoft\Windows\PowerShell\ModuleAnalysisCache` into its
+  working folder, which for an IDE terminal is the user's project. Real profiles always have the folder.
+- **When the Chrome extension is not connected, `playwright-cli` drives headless Chromium.** A fresh launch keeps the
+  token in the URL fragment, so read it from the log in the same shell command and never print it.
 - **Every panel `Group` id must be unique on the page, and that includes hidden folders.** A repeat throws "No layout data found for
   index 0" from a `ResizeObserver`. The same goes for `htmlFor` ids, so use `useId`. Panel ids inside a group may repeat.
 - **Never `display: none` a folder.** The panels read size 0 as collapsed, and xterm cannot measure. Use `visibility: hidden`.
@@ -812,6 +867,8 @@ has their own plan to make it novel, so ask them for it before building anything
 - **A model can reject a true fact in its prompt.** If a claim matters, code writes it.
 - **`pcode ide` buffers its first line when redirected.** Set `PYTHONUNBUFFERED=1`, or an empty log looks like a dead IDE.
 - **On Windows a venv's `python.exe` is a launcher.** Killing it can leave the real process, so kill the port's owner.
+- **Two `git init` on one folder at once fail on each other's template files** ("cannot copy ... File exists").
+  Anything that makes a shadow store must go through `Snapshots._init`.
 - **A uv tool on Windows is three processes:** `compactcode.exe`, the venv's `python.exe` launcher, the real Python. All three lock
   files an update replaces, so the helper waits for all three (`updates.processes_to_wait_for`).
 - **Windows PowerShell 5.1 started with `DETACHED_PROCESS` exits at once with code 0 and runs nothing.** Use `CREATE_NO_WINDOW`.

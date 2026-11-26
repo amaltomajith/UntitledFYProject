@@ -16,7 +16,8 @@ PACKAGE = Path(__file__).resolve().parent.parent / "puppeteer_code"
 # the shadow repo, kill a process, or score a benchmark. Add here only after reading what the call runs.
 DIRECT = {
     "cli.py": {"apply_diff"},
-    "ollama.py": {"_spawn", "stop"},
+    "ollama.py": {"_spawn", "stop", "ollama_version"},     # ollama --version
+    "assistant/local_setup.py": {"_default_installer"},   # Ollama's official installer, on a click, Windows only
     "sandbox.py": {"popen", "run", "_grant", "_revoke", "_python_bases"},
     "workspace.py": {"_list_source_files", "git"},
     "assistant/snapshots.py": {"_git", "_git_bytes", "read"},

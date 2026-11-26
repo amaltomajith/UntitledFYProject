@@ -102,6 +102,14 @@ def is_question(message: str) -> bool:
     return text.endswith("?") or bool(_QUESTION.match(text))
 
 
+def _call_message(call: dict) -> dict:
+    """A tool call as an OpenAI-shaped history entry. Provider extras (Gemini's thought signature) go back unchanged."""
+    entry = {"id": call["id"], "type": "function", "function": {"name": call["name"], "arguments": call["arguments"]}}
+    if call.get("extra_content"):
+        entry["extra_content"] = call["extra_content"]
+    return entry
+
+
 class Stop(Exception):
     """Ends a request early with a status and a plain reason for the user."""
 
@@ -158,6 +166,7 @@ class AssistantSession:
             self.tools.mode = self._safe_mode(mode)
         self._pending: dict[str, dict] = {}
         self._request_start = 0
+        self._cost_start: Optional[float] = None
         self._started = 0.0
 
     # ── front-end API ────────────────────────────────────────────────────────
@@ -282,6 +291,19 @@ class AssistantSession:
             self.graph = None
 
     # ── saving ───────────────────────────────────────────────────────────────
+
+    def _cost(self) -> Optional[float]:
+        """USD this request has cost, from configured prices. None when any model used has no price: never a guess."""
+        now = self.provider.meter.cost_usd
+        return None if now is None or self._cost_start is None else round(now - self._cost_start, 6)
+
+    def use_provider(self, provider) -> None:
+        """Another cloud provider for the same conversation. Cloud and Private never swap here."""
+        if self.busy:
+            raise RuntimeError("busy")
+        if self.private or provider.private:
+            raise ValueError("Private and cloud conversations stay apart.")
+        self.provider = provider
 
     @staticmethod
     def _new_id() -> str:
@@ -463,6 +485,7 @@ class AssistantSession:
 
     def _request(self, message: str, plan: Optional[dict] = None) -> None:
         self._request_start = self.provider.meter.total_tokens
+        self._cost_start = self.provider.meter.cost_usd
         self._started = time.monotonic()
         self._at = 0
         while self.provider.notices:
@@ -519,7 +542,8 @@ class AssistantSession:
         files = self._finish(before, message, reply or reason, turn)
         if st is not None:
             self._learn(st, files)
-        self._emit({"type": "usage", "tokens": self._spent(), "total": self.provider.meter.total_tokens})
+        self._emit({"type": "usage", "tokens": self._spent(), "total": self.provider.meter.total_tokens,
+                    "cost": self._cost()})
         self._emit({"type": "done", "status": status, "reason": reason, "files": files,
                     "can_undo": bool(self.undo_stack), "verified": turn["verified"], "question": turn["question"]})
 
@@ -811,7 +835,8 @@ class AssistantSession:
             reply = self.provider.client.chat(model=fast, **options)
         if self.activity is not None:
             self.activity.reply_ended()
-        self._emit({"type": "usage", "tokens": self._spent(), "total": self.provider.meter.total_tokens})
+        self._emit({"type": "usage", "tokens": self._spent(), "total": self.provider.meter.total_tokens,
+                    "cost": self._cost()})
         return reply
 
     def _loop(self, spec: AgentSpec, task: str, history: bool = True, quiet: bool = False,
@@ -829,7 +854,7 @@ class AssistantSession:
         cut_offs = 0
         for _ in range(max_turns):
             self._limits()
-            if self.memory:
+            if self.memory and not getattr(self.provider, "append_only", False):
                 for item in fold(messages):
                     repeats.pop(item["key"], None)      # reading a folded file again is not a stuck loop
                     folded_paths.add(item["path"])
@@ -854,9 +879,7 @@ class AssistantSession:
                 if history and not quiet:
                     self._emit({"type": "text_delta", "text": text})
                 return text
-            messages.append({"role": "assistant", "content": text, "tool_calls": [
-                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
-                for c in calls]})
+            messages.append({"role": "assistant", "content": text, "tool_calls": [_call_message(c) for c in calls]})
             for call in calls:
                 repeats[(call["name"], call["arguments"])] += 1
                 if repeats[(call["name"], call["arguments"])] > REPEAT_LIMIT:

@@ -189,7 +189,10 @@ class Toolbox:
         self.touched.add(rel)
         self.on_event({"type": "file_changed", "path": rel, "action": action})
         if self.diffs:
-            self.on_event(file_diff(rel, action, before, after))
+            event = file_diff(rel, action, before, after)
+            # A write of the same lines is still a write (the repeat guard counts it), but "+0 -0" is noise.
+            if action != "edited" or event["added"] or event["removed"]:
+                self.on_event(event)
 
     def _write_file(self, path: str, content: str) -> str:
         target = self._editable(path)

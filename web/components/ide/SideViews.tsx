@@ -17,9 +17,9 @@ export const SIDE_VIEWS: { id: SideView; icon: string }[] = [
   { id: "tests", icon: "beaker" },
 ];
 
-type BarProps = { view: SideView; open: boolean; onPick: (view: SideView) => void; onGraph: () => void };
+type BarProps = { view: SideView; open: boolean; onPick: (view: SideView) => void; onGraph: () => void; onSettings: () => void };
 
-export function ActivityBar({ view, open, onPick, onGraph }: BarProps) {
+export function ActivityBar({ view, open, onPick, onGraph, onSettings }: BarProps) {
   return (
     <nav className="ide-activity" aria-label={IDE.activity.label}>
       {SIDE_VIEWS.map(({ id, icon }) => (
@@ -36,6 +36,9 @@ export function ActivityBar({ view, open, onPick, onGraph }: BarProps) {
       ))}
       <button type="button" aria-label={IDE.graph.open} data-tip={IDE.graph.title} onClick={onGraph}>
         <Codicon name="type-hierarchy" />
+      </button>
+      <button type="button" className="ide-activity__end" aria-label={IDE.settings.open} data-tip={IDE.settings.title} onClick={onSettings}>
+        <Codicon name="settings-gear" />
       </button>
     </nav>
   );

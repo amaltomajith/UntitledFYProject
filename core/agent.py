@@ -292,6 +292,14 @@ def _http_client_from_env():
     return httpx.Client(verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT), timeout=120.0)
 
 
+def _with_extra(call: dict, source) -> dict:
+    """Keep a provider's extra data on a tool call (Gemini's thought signature), so it can be sent back."""
+    extra = (getattr(source, "model_extra", None) or {}).get("extra_content")
+    if extra:
+        call["extra_content"] = extra
+    return call
+
+
 class OpenAICompatClient:
     """
     Thin wrapper around any OpenAI-compatible chat completions endpoint.
@@ -318,6 +326,7 @@ class OpenAICompatClient:
     PROVIDER    = "openai-compatible"
     BASE_URL    = ""
     API_KEY_ENV = ""
+    HEADERS: dict[str, str] = {}   # extra headers some providers ask apps to send
     RATE_LIMIT_MAX_WAIT = 90.0   # seconds; longer Retry-After values are daily quotas
 
     def __init__(
@@ -352,6 +361,8 @@ class OpenAICompatClient:
 
         # The OpenAI SDK works with any OpenAI-compatible endpoint via base_url.
         kwargs: dict[str, Any] = {"api_key": key, "base_url": self.base_url}
+        if self.HEADERS:
+            kwargs["default_headers"] = dict(self.HEADERS)
         http_client = _http_client_from_env()
         if http_client is not None:
             kwargs["http_client"] = http_client
@@ -406,8 +417,7 @@ class OpenAICompatClient:
                 completion = self._client.chat.completions.create(
                     model=model,
                     messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
+                    **self._sampling(temperature, max_tokens),
                     **extra,
                 )
                 latency_ms = (time.monotonic() - t0) * 1000
@@ -428,7 +438,7 @@ class OpenAICompatClient:
                 }
                 if tools:
                     reply["tool_calls"] = [
-                        {"id": c.id, "name": c.function.name, "arguments": c.function.arguments or "{}"}
+                        _with_extra({"id": c.id, "name": c.function.name, "arguments": c.function.arguments or "{}"}, c)
                         for c in choice.message.tool_calls or []
                     ]
                 return reply
@@ -483,7 +493,7 @@ class OpenAICompatClient:
     def _stream(self, model, messages, temperature, max_tokens, on_delta, t0) -> dict:
         """One streaming completion. Providers that omit usage leave the counts at 0."""
         stream = self._client.chat.completions.create(
-            model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
+            model=model, messages=messages, **self._sampling(temperature, max_tokens),
             stream=True, stream_options={"include_usage": True},
         )
         parts: list[str] = []
@@ -508,7 +518,7 @@ class OpenAICompatClient:
     def _stream_tools(self, model, messages, temperature, max_tokens, tools, on_progress, t0) -> dict:
         """One streaming completion with tools, assembling each call as its pieces arrive."""
         stream = self._client.chat.completions.create(
-            model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
+            model=model, messages=messages, **self._sampling(temperature, max_tokens),
             tools=tools, tool_choice="auto", stream=True, stream_options={"include_usage": True},
         )
         parts: list[str] = []
@@ -530,6 +540,7 @@ class OpenAICompatClient:
             for piece in delta.tool_calls or []:
                 call = calls.setdefault(piece.index or 0, {"id": "", "name": "", "arguments": ""})
                 call["id"] = piece.id or call["id"]
+                _with_extra(call, piece)
                 if piece.function is not None:
                     call["name"] = piece.function.name or call["name"]
                     call["arguments"] += piece.function.arguments or ""
@@ -541,9 +552,12 @@ class OpenAICompatClient:
                 "completion_tokens": usage.completion_tokens if usage else 0,
                 "total_tokens":      usage.total_tokens if usage else 0,
             },
-            "tool_calls": [{"id": c["id"], "name": c["name"], "arguments": c["arguments"] or "{}"}
-                           for _, c in sorted(calls.items())],
+            "tool_calls": [{**c, "arguments": c["arguments"] or "{}"} for _, c in sorted(calls.items())],
         }
+
+    def _sampling(self, temperature: float, max_tokens: int) -> dict:
+        """How this provider takes sampling settings. Subclasses change it where an API differs."""
+        return {"temperature": temperature, "max_tokens": max_tokens}
 
     def list_models(self) -> list[str]:
         """Return the model ids the provider currently serves (GET /v1/models)."""
@@ -570,6 +584,54 @@ class NebiusClient(OpenAICompatClient):
     NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1"
     BASE_URL        = NEBIUS_BASE_URL
     API_KEY_ENV     = "NEBIUS_API_KEY"
+
+
+class OpenAIClient(OpenAICompatClient):
+    """OpenAI's own API. Its current reasoning models take `max_completion_tokens` and reject a temperature."""
+
+    PROVIDER    = "openai"
+    BASE_URL    = "https://api.openai.com/v1"
+    API_KEY_ENV = "OPENAI_API_KEY"
+
+    def _sampling(self, temperature: float, max_tokens: int) -> dict:
+        return {"max_completion_tokens": max_tokens}
+
+
+class GeminiClient(OpenAICompatClient):
+    """Google Gemini through its OpenAI-compatible endpoint. Tool calls can carry `extra_content`
+    (thought signatures); the base client keeps it on the call so the session sends it back unchanged."""
+
+    PROVIDER    = "gemini"
+    BASE_URL    = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    API_KEY_ENV = "GEMINI_API_KEY"
+
+    def _sampling(self, temperature: float, max_tokens: int) -> dict:
+        # Gemini 3 and later deprecate the sampling parameters (temperature, top_p, top_k).
+        return {"max_tokens": max_tokens}
+
+    def list_models(self) -> list[str]:
+        # The endpoint names models "models/<id>"; requests take the bare id.
+        return [m.split("/", 1)[1] if m.startswith("models/") else m for m in super().list_models()]
+
+
+class OpenRouterClient(OpenAICompatClient):
+    """OpenRouter: many providers behind one OpenAI-compatible API. The two headers are its optional app labels."""
+
+    PROVIDER    = "openrouter"
+    BASE_URL    = "https://openrouter.ai/api/v1"
+    API_KEY_ENV = "OPENROUTER_API_KEY"
+    HEADERS     = {"HTTP-Referer": "https://compactcode.vercel.app", "X-Title": "CompactCode"}
+
+    def catalog_prices(self) -> dict[str, list[float]]:
+        """USD per 1M tokens [input, output] from the live catalog, which quotes USD per token as strings."""
+        prices: dict[str, list[float]] = {}
+        for m in self._client.models.list():
+            pricing = (getattr(m, "model_extra", None) or {}).get("pricing") or {}
+            try:
+                prices[m.id] = [float(pricing["prompt"]) * 1e6, float(pricing["completion"]) * 1e6]
+            except (KeyError, TypeError, ValueError):
+                continue
+        return prices
 
 
 # ═════════════════════════════════════════════════════════════════════════════

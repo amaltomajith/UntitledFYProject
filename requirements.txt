@@ -4,6 +4,8 @@
 # ── Core LLM client ──────────────────────────────────────────────────────────
 # Groq uses OpenAI's REST format; the openai SDK works out of the box.
 openai>=1.30.0
+# Claude goes through Anthropic's own SDK and Messages API.
+anthropic>=2.5.0
 
 # ── Environment variable loading ─────────────────────────────────────────────
 # Reads .env file into os.environ automatically at import time.

@@ -31,19 +31,22 @@ from puppeteer_code.assistant.activity import TRANSIENT
 from puppeteer_code.assistant.effort import LEVELS
 from puppeteer_code.assistant.permissions import REFUSE, classify_command, is_protected
 from puppeteer_code.assistant.session import AssistantSession
-from puppeteer_code.assistant.setup import (KEY_HELP, is_private, key_status, load_keys, pick_provider,
-                                             remember_private, save_key)
+from puppeteer_code.assistant.setup import (KEY_HELP, PROVIDER_NAMES, is_private, key_hint, key_status, load_keys,
+                                             pick_provider, remember_private, remove_key, save_key)
 from puppeteer_code.assistant.snapshots import pcode_home
 from puppeteer_code.assistant.terminals import TerminalLimit, TerminalManager, bridge, pty_missing, windows_build
 from puppeteer_code.assistant.toolbox import Toolbox
 from puppeteer_code.bench import is_quota_error
 from puppeteer_code.cli import apply_diff
-from puppeteer_code.privacy import OUTSIDE, PrivacyError, private_claim
+from puppeteer_code.assistant.local_setup import LocalSetup
+from puppeteer_code.privacy import OUTSIDE, PrivacyError, is_cloud_name, private_claim
+from puppeteer_code.providers import check_key
 from puppeteer_code.sandbox import DirectRunner
 from puppeteer_code.server import RunBusy, RunRequest
 from puppeteer_code.workspace import IGNORE_DIRS, scrub, scrub_obj, scrubbed_env
 
 MAX_FOLDERS = 6
+CATALOG_SECONDS = 600
 MAX_TREE = 2000
 MAX_FILE = 1_000_000
 MAX_LOG = 5000
@@ -64,6 +67,14 @@ FIX_LABELS = {"RepoScoutAgent": "Finding the code", "TestRunnerAgent": "Running 
 class KeyRequest(BaseModel):
     provider: str
     key: str = Field(min_length=1, max_length=500)
+
+
+class ProviderRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=40)
+
+
+class LocalModelRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=120)
 
 
 class OpenRequest(BaseModel):
@@ -207,6 +218,9 @@ class IdeHub:
         self.manager = None                 # Fix mode runs through the server's RunManager
         self.fix_run = None
         self.fix_tokens = 0                 # Fix mode meters its own session
+        self.earlier_tokens = 0             # spent through a provider this folder has switched away from
+        self.catalogs: dict[str, tuple[float, list[dict]]] = {}     # provider -> (time, models), for the picker
+        self.waiting: Optional[str] = None  # a folder named at start that needs a key or a local model first
         self.terminals = TerminalManager()
 
     def check(self, token: object) -> bool:
@@ -243,6 +257,9 @@ class IdeHub:
         session = self.session
         return {
             "keys": key_status(), "key_help": KEY_HELP, "provider": self.active_provider(),
+            "key_hints": {p: key_hint(p) for p, ready in key_status().items() if ready},
+            "provider_names": PROVIDER_NAMES,
+            "prices": self._prices(session),
             "project": str(session.project) if session else None,
             "session_id": session.id if session else None,
             "session_title": session.display_title if session else "",
@@ -255,11 +272,19 @@ class IdeHub:
             "busy": self.busy,
             "models": dict(session.provider.tiers) if session else {},
             "can_undo": bool(session and session.undo_stack),
-            "tokens": (session.provider.meter.total_tokens if session else 0) + self.fix_tokens,
+            "tokens": (session.provider.meter.total_tokens if session else 0) + self.fix_tokens + self.earlier_tokens,
+            "cost_usd": session.provider.meter.cost_usd if session else None,
+            "waiting_folder": None if session else self.waiting,
             "seq": self.seq,
         }
 
     def open(self, path: str) -> dict:
+        if not self.spaces:
+            return self._open(path)
+        with self.spaces.opening:
+            return self._open(path)
+
+    def _open(self, path: str) -> dict:
         if self.busy:
             raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
         folder = Path(path).expanduser()
@@ -316,6 +341,46 @@ class IdeHub:
         self._adopt(session)
         remember_private(session.project, on, self.home)
         return self.state()
+
+    def switch_provider(self, name: str) -> dict:
+        """Use another cloud provider. The conversation carries on; Private is a separate switch."""
+        if name not in KEY_HELP:
+            raise HTTPException(422, {"code": "bad_provider", "message": "Unknown provider."})
+        if self.busy:
+            raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
+        if self.private:
+            raise HTTPException(409, {"code": "private_on", "message": "Turn Private off first."})
+        if not key_status().get(name):
+            raise HTTPException(409, {"code": "no_key", "message": f"Add a {PROVIDER_NAMES[name]} key first."})
+        if self.session is not None:
+            try:
+                models = self.make_provider(name)
+            except Exception as e:      # a missing SDK or a key the provider refuses
+                raise HTTPException(409, {"code": "provider_failed", "message": scrub(str(e))[:300]})
+            self.earlier_tokens += self.session.provider.meter.total_tokens
+            self.session.use_provider(models)
+            self.publish({"type": "notice", "text": f"Now using {PROVIDER_NAMES[name]}."})
+        self.provider_name = name
+        return self.state()
+
+    def catalog(self, name: str) -> list[dict]:
+        """The models a provider serves, for the picker. Kept for ten minutes, so opening the menu is quick."""
+        held = self.catalogs.get(name)
+        if held and time.monotonic() - held[0] < CATALOG_SECONDS:
+            return held[1]
+        session = self.session
+        if session is not None and session.provider.provider == name:
+            models = session.provider.catalog()
+        else:
+            models = self.make_provider(name).catalog()
+        self.catalogs[name] = (time.monotonic(), models)
+        return models
+
+    @staticmethod
+    def _prices(session: Optional[AssistantSession]) -> dict:
+        if session is None:
+            return {}
+        return {tier: session.provider.meter.prices.get(model) for tier, model in session.provider.tiers.items()}
 
     def need_session(self) -> AssistantSession:
         if self.session is None:
@@ -516,6 +581,8 @@ class Workspaces:
     def __init__(self, first: IdeHub):
         self.hubs: dict[str, IdeHub] = {first.id: first}
         self.lock = threading.Lock()
+        # One open at a time, so a second click on a tab finds the folder held instead of opening it again.
+        self.opening = threading.RLock()
         self.path = first.home / "ide-workspaces.json"
         self.saved = self._read()
         first.spaces = self
@@ -632,25 +699,77 @@ def register_ide(app: FastAPI, first: IdeHub) -> None:
 
     guard = [Depends(auth)]
 
+    def publish_all(event: dict, keep: bool = True) -> None:
+        for hub in list(spaces.hubs.values()):
+            hub.publish(event, keep)
+
+    local = LocalSetup(first.home, publish_all, busy=lambda: any(h.busy for h in list(spaces.hubs.values())))
+    app.state.local_setup = local       # tests swap its parts for fakes
+
+    @app.get("/api/ide/local", dependencies=guard)
+    def local_status(refresh: bool = False):
+        return local.status(refresh)
+
+    @app.post("/api/ide/local/install", dependencies=guard, status_code=202)
+    def local_install():
+        try:
+            return local.run_install()
+        except PermissionError as e:
+            raise HTTPException(409, {"code": "run_yourself", "message": str(e)})
+        except RuntimeError as e:
+            raise HTTPException(409, {"code": "installing", "message": str(e)})
+
+    @app.post("/api/ide/local/pull", dependencies=guard, status_code=202)
+    def local_pull(body: LocalModelRequest):
+        try:
+            return local.start_pull(body.model)
+        except PrivacyError as e:
+            raise HTTPException(422 if is_cloud_name(body.model) else 409, {"code": "refused", "message": str(e)})
+        except ValueError as e:
+            raise HTTPException(422, {"code": "bad_model", "message": str(e)})
+        except (RuntimeError, OSError) as e:
+            raise HTTPException(409, {"code": "refused", "message": str(e)})
+
+    @app.post("/api/ide/local/cancel", dependencies=guard)
+    def local_cancel():
+        return {"cancelled": local.cancel_pull()}
+
+    @app.post("/api/ide/local/choose", dependencies=guard)
+    def local_choose(body: LocalModelRequest, hub: IdeHub = Depends(current)):
+        if hub.busy:
+            raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
+        try:
+            local.choose(body.model)
+        except (LookupError, ValueError) as e:
+            raise HTTPException(409, {"code": "not_installed", "message": str(e)})
+        for each in list(spaces.hubs.values()):     # a Private folder uses it from its next request
+            if each.private and each.session and not each.busy:
+                each.session.provider.tiers.update(fast=body.model, quality=body.model)
+        return {**local.status(), "state": hub.state()}
+
     @app.get("/api/ide/workspaces", dependencies=guard)
     def workspaces():
         return spaces.public()
 
     @app.post("/api/ide/workspaces", dependencies=guard, status_code=201)
     def open_workspace(body: FolderRequest):
-        held = spaces.holding(body.path) if body.path else None
-        if held:
-            return {"id": held.id, **spaces.public()}
-        hub = spaces.add()
-        if body.path:
-            try:
-                hub.open(body.path)
-            except HTTPException as e:
-                spaces.remove(hub)
-                if e.status_code == 404:        # a missing key is no reason to lose the tab
-                    spaces.forget(body.path)
-                raise
-        return {"id": hub.id, **spaces.public()}
+        with spaces.opening:
+            held = spaces.holding(body.path) if body.path else None
+            if held:
+                return {"id": held.id, **spaces.public()}
+            hub = spaces.add()
+            if body.path:
+                try:
+                    hub.open(body.path)
+                except HTTPException as e:
+                    spaces.remove(hub)
+                    if e.status_code == 404:        # a missing key is no reason to lose the tab
+                        spaces.forget(body.path)
+                    raise
+                except Exception:
+                    spaces.remove(hub)              # no empty tab left behind by a failure
+                    raise
+            return {"id": hub.id, **spaces.public()}
 
     @app.delete("/api/ide/workspaces/{workspace}", dependencies=guard)
     def close_workspace(workspace: str):
@@ -733,7 +852,51 @@ def register_ide(app: FastAPI, first: IdeHub) -> None:
         except ValueError as e:
             raise HTTPException(422, {"code": "bad_key", "message": str(e)})
         hub.provider_name = hub.provider_name or body.provider
+        hub.catalogs.pop(body.provider, None)
         return hub.state()
+
+    @app.post("/api/ide/keys/test", dependencies=guard)
+    def test_key(body: ProviderRequest):
+        if body.provider not in KEY_HELP:
+            raise HTTPException(422, {"code": "bad_provider", "message": "Unknown provider."})
+        if not key_status().get(body.provider):
+            raise HTTPException(409, {"code": "no_key", "message": "No key is saved for that provider."})
+        try:
+            count = check_key(body.provider)
+        except RuntimeError as e:
+            return {"ok": False, "message": str(e)}
+        return {"ok": True, "models": count}
+
+    @app.delete("/api/ide/keys/{provider}", dependencies=guard)
+    def forget_key(provider: str, hub: IdeHub = Depends(current)):
+        if provider not in KEY_HELP:
+            raise HTTPException(422, {"code": "bad_provider", "message": "Unknown provider."})
+        if hub.busy:
+            raise HTTPException(409, {"code": "busy", "message": "Wait for the current request to finish."})
+        remove_key(provider, hub.home)
+        hub.catalogs.pop(provider, None)
+        if hub.provider_name == provider:
+            hub.provider_name = None    # the next key in order is used for the next folder opened
+        return hub.state()
+
+    @app.post("/api/ide/provider", dependencies=guard)
+    def provider(body: ProviderRequest, hub: IdeHub = Depends(current)):
+        return hub.switch_provider(body.provider)
+
+    @app.get("/api/ide/models", dependencies=guard)
+    def models(provider: str = "", hub: IdeHub = Depends(current)):
+        name = provider or hub.active_provider() or ""
+        if name == "local":
+            raise HTTPException(422, {"code": "bad_provider", "message": "Local models are listed by /api/ide/local."})
+        if name not in KEY_HELP:
+            raise HTTPException(422, {"code": "bad_provider", "message": "Unknown provider."})
+        if not key_status().get(name):
+            raise HTTPException(409, {"code": "no_key", "message": f"Add a {PROVIDER_NAMES[name]} key first."})
+        try:
+            listed = hub.catalog(name)
+        except Exception as e:
+            raise HTTPException(502, {"code": "catalog_failed", "message": scrub(str(e))[:300]})
+        return {"provider": name, "models": listed}
 
     @app.get("/api/ide/browse", dependencies=guard)
     def browse(path: str = ""):

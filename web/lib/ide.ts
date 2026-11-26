@@ -7,14 +7,22 @@ import { apiBase } from "./api";
 
 const TOKEN_KEY = "pcode-ide-token";
 const MAX_LINES = 2000;
+export const LOCAL_EVENT = "pcode:local";
 const RETRY_MS = 1500;
 
 export type Mode = "plan" | "ask" | "auto";
 export type Effort = "fast" | "normal" | "think" | "deep";
 
+export type Price = [number, number] | null;   // USD per 1M tokens, input and output; null when unknown
+
 export type IdeState = {
   keys: Record<string, boolean>;
   key_help: Record<string, string>;
+  key_hints: Record<string, string | null>;
+  provider_names: Record<string, string>;
+  prices: Record<string, Price>;
+  cost_usd: number | null;
+  waiting_folder?: string | null;   // named at start, before any key or local model existed
   provider: string | null;
   project: string | null;
   session_id: string | null;
@@ -52,9 +60,14 @@ export type Item =
       files: string[];
       verified: boolean;
       tokens: number;
+      cost: number | null;
       question: boolean;
       fixRun: string | null;
+      counts: Record<string, { added: number; removed: number }>;
     };
+
+/** One line of the Console.log tab, written from a real event. Nothing in it is made up. */
+export type ConsoleLine = { text: string; tone: "plain" | "good" | "bad" | "dim" };
 
 export type LiveRow =
   | { kind: "agent"; agent: string; label: string; since: number; thinking: string }
@@ -117,7 +130,10 @@ export type View = {
   items: Item[];
   busy: boolean;
   requestTokens: number;
+  requestCost: number | null;
   totalTokens: number;
+  console: ConsoleLine[];
+  agent: string;
   terminal: TermLine[];
   checks: { ok: boolean; summary: string }[];
   preview: string | null;
@@ -134,7 +150,10 @@ export const EMPTY_VIEW: View = {
   items: [],
   busy: false,
   requestTokens: 0,
+  requestCost: null,
   totalTokens: 0,
+  console: [],
+  agent: "",
   terminal: [],
   checks: [],
   preview: null,
@@ -167,7 +186,7 @@ function feedFrom(history: { role: string; content: string }[], turns: Partial<T
     if (message.role === "user") return [{ kind: "user", text: message.content, turn: ++turn }];
     const reply: Item = { kind: "reply", text: message.content };
     const result = turns[turn - 1];
-    return result?.status ? [reply, { ...(result as Turn), kind: "done", fixRun: null }] : [reply];
+    return result?.status ? [reply, { ...(result as Turn), kind: "done", fixRun: null, cost: null, counts: {} }] : [reply];
   });
 }
 
@@ -242,10 +261,74 @@ function liveEvent(live: Live, event: Event): Live {
   }
 }
 
+const MAX_CONSOLE = 2000;
+const short = (text: unknown, n = 72) => {
+  const one = String(text ?? "").split("\n")[0];
+  return one.length > n ? `${one.slice(0, n - 3)}...` : one;
+};
+const quote = (text: unknown, n?: number) => JSON.stringify(short(text, n));
+
+/** The Console.log share of an event: a call-shaped line for each thing that really happened. */
+function consoleLine(view: View, event: Event): ConsoleLine | null {
+  const agent = (view.agent || "assistant").toLowerCase();
+  switch (event.type) {
+    case "user":
+      return { text: `request.start(${quote(event.text, 60)})`, tone: "plain" };
+    case "agent":
+      return { text: `${String(event.agent).toLowerCase()}.start()`, tone: "dim" };
+    case "plan":
+      return { text: `planner.plan(${(event.steps ?? []).length} steps)`, tone: "plain" };
+    case "tool_start": {
+      const detail = event.args?.path ?? event.args?.command ?? event.args?.pattern;
+      return { text: `${agent}.${event.tool}(${detail === undefined ? "" : quote(detail)})`, tone: "plain" };
+    }
+    case "tool_end":
+      return event.ok ? null : { text: `  error: ${short(event.summary)}`, tone: "bad" };
+    case "file_changed":
+      return { text: `files.${event.action}(${quote(event.path)})`, tone: "good" };
+    case "verify":
+      return { text: `checks.run()  ${short(event.summary)}`, tone: event.ok ? "good" : "bad" };
+    case "rollback":
+      return { text: `snapshots.rollback(${quote(event.reason)})`, tone: "bad" };
+    case "approval_request":
+      return { text: `approval.ask(${quote(event.command)})`, tone: "plain" };
+    case "approval_answered":
+      return { text: `approval.${event.approved ? "allowed" : "declined"}()`, tone: "dim" };
+    case "notice":
+      return { text: `notice(${quote(event.text, 90)})`, tone: "dim" };
+    case "error":
+      return { text: `error(${quote(event.message, 90)})`, tone: "bad" };
+    case "done":
+      return {
+        text: `request.done(${quote(event.status)})  ${view.requestTokens.toLocaleString("en-US")} tokens`,
+        tone: event.status === "done" ? "good" : "bad",
+      };
+    default:
+      return null;
+  }
+}
+
+/** Lines added and removed per file in the request that just ended, from its file diffs. */
+function countsOf(live: Live) {
+  const counts: Record<string, { added: number; removed: number }> = {};
+  for (const edit of live.edits) {
+    const now = counts[edit.path] ?? { added: 0, removed: 0 };
+    counts[edit.path] = { added: now.added + edit.added, removed: now.removed + edit.removed };
+  }
+  return counts;
+}
+
 /** Turns one engine event into view state. Pure, so a reconnect can replay the log. */
 export function applyEvent(view: View, event: Event): View {
   const live = liveEvent(view.live, event);
-  const next = { ...view, live, seq: event.seq ?? view.seq };
+  const line = consoleLine(view, event);
+  const next = {
+    ...view,
+    live,
+    seq: event.seq ?? view.seq,
+    agent: event.type === "agent" ? String(event.agent) : view.agent,
+    console: line ? [...view.console, line].slice(-MAX_CONSOLE) : view.console,
+  };
   const { items } = view;
   switch (event.type) {
     case "opened":
@@ -261,6 +344,7 @@ export function applyEvent(view: View, event: Event): View {
         ...next,
         busy: true,
         requestTokens: 0,
+        requestCost: null,
         changed: {},
         items: [...items, { kind: "user", text: event.text, turn: event.turn ?? null }],
       };
@@ -340,13 +424,13 @@ export function applyEvent(view: View, event: Event): View {
     case "help":
       return { ...next, items: [...items, { kind: "help" }] };
     case "cleared":
-      return { ...next, items: [], changed: {}, requestTokens: 0, graphTick: view.graphTick + 1 };
+      return { ...next, items: [], console: [], changed: {}, requestTokens: 0, requestCost: null, graphTick: view.graphTick + 1 };
     case "resumed":
       return { ...next, changed: {}, graphTick: view.graphTick + 1, items: feedFrom(event.history, event.turns ?? []) };
     case "preview":
       return { ...next, preview: event.url };
     case "usage":
-      return { ...next, requestTokens: event.tokens, totalTokens: event.total };
+      return { ...next, requestTokens: event.tokens, totalTokens: event.total, requestCost: event.cost ?? null };
     case "applied":
       return {
         ...next,
@@ -378,8 +462,10 @@ export function applyEvent(view: View, event: Event): View {
             files: event.files,
             verified: event.verified,
             tokens: view.requestTokens,
+            cost: view.requestCost,
             question: event.question === true,
             fixRun: event.fix_run ?? null,
+            counts: countsOf(view.live),
           },
         ],
       };
@@ -480,6 +566,11 @@ export function useIde(client: IdeClient) {
       ws.onopen = () => ws.send(JSON.stringify({ token: client.token, workspace: client.workspace, since: seq.current }));
       ws.onmessage = (message) => {
         const event = JSON.parse(message.data) as Event;
+        if (event.type === "local_pull" || event.type === "local_install") {
+          // Local setup belongs to the whole IDE: every open folder hears it, and the setup view listens.
+          window.dispatchEvent(new CustomEvent(LOCAL_EVENT, { detail: event }));
+          return;
+        }
         if ((event as { type: string }).type === "update_available") {
           // Updates belong to the whole IDE, not this folder: the update panel listens for this.
           window.dispatchEvent(new CustomEvent("pcode:update-available"));

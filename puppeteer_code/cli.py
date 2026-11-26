@@ -269,7 +269,15 @@ def cmd_ide(args) -> int:
         say(f"Port {args.port} is in use, so CompactCode uses {port}.")
     hub = make_hub(args.provider, args.mode, args.cache, args.effort, args.private)
     if args.folder:
-        hub.open(args.folder)
+        from fastapi import HTTPException
+        try:
+            hub.open(args.folder)
+        except HTTPException as error:
+            # A first run has no key yet: the browser asks for one (or sets up a local model), then opens it.
+            if not (isinstance(error.detail, dict) and error.detail.get("code") == "no_key"):
+                raise
+            hub.waiting = str(Path(args.folder).expanduser().resolve())
+            say("No API key yet. Choose a local model or add a key in the browser, then the folder opens.")
     url = f"http://127.0.0.1:{port}/ide#token={hub.token}"
     say(f"CompactCode IDE: {url}  (Ctrl+C to stop)")
     line = updates.notice(private=args.provider == "local")

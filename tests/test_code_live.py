@@ -184,6 +184,14 @@ def test_a_change_reports_its_lines(tmp_path):
     assert diff["path"] == "a.py" and diff["action"] == "created" and diff["hunks"][0]["lines"] == ["+ x = 1"]
 
 
+def test_a_write_of_the_same_text_shows_no_diff(tmp_path):
+    (tmp_path / "p").mkdir()
+    (tmp_path / "p" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    events = watched(tmp_path, script(calls(call("write_file", path="a.py", content="x = 1\n")), "Done."))
+    assert [e for e in events if e["type"] == "file_changed" and e["path"] == "a.py"]
+    assert not [e for e in events if e["type"] == "file_diff"]
+
+
 def test_code_on_its_way_is_shown(tmp_path):
     emitted = []
     activity = Activity(emitted.append)

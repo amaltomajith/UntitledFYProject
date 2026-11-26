@@ -4,7 +4,11 @@ import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "re
 import { ArrowUp, Stop } from "@phosphor-icons/react";
 import { IDE, type SlashCommand } from "@/lib/content";
 import { when, type Item, type SavedChat, type View } from "@/lib/ide";
+import { ConsoleLog } from "./ConsoleLog";
+import { FileIcon } from "./FileIcon";
+import { Markdown } from "./Markdown";
 import { looksLikeCommand, SlashMenu, usePrompt } from "./Slash";
+import { PROMPT_EVENT } from "./StartPage";
 
 type Mode = "build" | "fix";
 
@@ -15,7 +19,9 @@ type Props = {
   jump: { turn: number } | null;
   onJumped: () => void;
   view: View;
-  model: string;
+  workspace: string;
+  picker: ReactNode;
+  local: boolean;
   canUndo: boolean;
   claim: string | null;
   canApprove: boolean;
@@ -27,27 +33,13 @@ type Props = {
   onAnswer: (id: string, approved: boolean) => void;
   onUndo: () => void;
   onReview: () => void;
+  onOpenFile: (path: string) => void;
   onApply: (runId: string) => void;
   onResume: (id: string) => void;
 };
 
 const FRAMES = ["|", "/", "-", "\\"];
 const STARTERS = IDE.chat.starters.map((name) => IDE.commands.list.find((c) => c.name === name)!);
-
-/** Models write `code` and **bold** even when asked for plain text. Nothing else is interpreted. */
-function Rich({ text }: { text: string }) {
-  return (
-    <>
-      {text.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).map((part, i) => {
-        if (part.startsWith("`") && part.endsWith("`") && part.length > 2) return <code key={i}>{part.slice(1, -1)}</code>;
-        if (part.startsWith("**") && part.endsWith("**") && part.length > 4) return <strong key={i}>{part.slice(2, -2)}</strong>;
-        return part;
-      })}
-    </>
-  );
-}
-
-const prettyModel = (id: string) => id.split("/").pop() ?? id;
 
 function Line({ glyph, tone, children }: { glyph: string; tone?: string; children: ReactNode }) {
   return (
@@ -60,10 +52,36 @@ function Line({ glyph, tone, children }: { glyph: string; tone?: string; childre
   );
 }
 
-function Done({ item, last, ...props }: { item: Extract<Item, { kind: "done" }>; last: boolean } & Pick<Props, "canUndo" | "onUndo" | "onReview" | "onApply" | "canApprove" | "onApprove">) {
+function ChangedFiles({ item, onOpenFile }: { item: Extract<Item, { kind: "done" }>; onOpenFile: (path: string) => void }) {
+  return (
+    <ul className="ide-changed" aria-label={IDE.chat.changedCard}>
+      {item.files.map((path) => {
+        const count = item.counts?.[path];
+        const name = path.split("/").pop() ?? path;
+        return (
+          <li key={path}>
+            <button type="button" title={IDE.chat.openDiff(path)} onClick={() => onOpenFile(path)}>
+              <FileIcon name={name} />
+              <span className="ide-changed__name">{name}</span>
+              <span className="ide-changed__dir">{path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : ""}</span>
+              {count ? (
+                <span className="ide-changed__counts">
+                  <span data-tone="good">+{count.added}</span> <span data-tone="bad">-{count.removed}</span>
+                </span>
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Done({ item, last, ...props }: { item: Extract<Item, { kind: "done" }>; last: boolean } & Pick<Props, "canUndo" | "onUndo" | "onReview" | "onApply" | "canApprove" | "onApprove" | "onOpenFile" | "local">) {
   const text = IDE.chat.status[item.status] ?? item.status;
   const failed = item.status !== "done" && item.status !== "planned";
-  if (item.question) return <p className="ide-done__meta">{IDE.tokens(item.tokens)}</p>;
+  const cost = <span title={IDE.chat.costHint}>{IDE.chat.cost(item.cost, props.local)}</span>;
+  if (item.question) return <p className="ide-done__meta">{IDE.tokens(item.tokens)} · {cost}</p>;
   return (
     <div className="ide-done">
       <Line glyph={failed ? "✗" : "✓"} tone={failed ? "bad" : "good"}>
@@ -83,8 +101,11 @@ function Done({ item, last, ...props }: { item: Extract<Item, { kind: "done" }>;
           </>
         ) : null}
         {!item.fixRun && item.status !== "planned" ? (
-          <p className="ide-done__meta">{IDE.chat.summary(item.files.length, item.tokens)}</p>
+          <p className="ide-done__meta">
+            {IDE.chat.summary(item.files.length, item.tokens)} · {cost}
+          </p>
         ) : null}
+        {!item.fixRun && item.files.length ? <ChangedFiles item={item} onOpenFile={props.onOpenFile} /> : null}
         {item.fixRun ? (
           <div className="ide-done__actions">
             <button type="button" className="btn btn--primary btn--sm" onClick={() => props.onApply(item.fixRun as string)}>
@@ -159,7 +180,7 @@ function Help() {
   );
 }
 
-type EntryProps = Omit<Props, "active" | "header" | "status" | "jump" | "onJumped" | "view" | "model" | "onSend" | "onSlash" | "onShell" | "onCancel">;
+type EntryProps = Omit<Props, "active" | "header" | "status" | "jump" | "onJumped" | "view" | "workspace" | "picker" | "onSend" | "onSlash" | "onShell" | "onCancel">;
 
 function Entry({ item, last, running, ...props }: { item: Item; last: boolean; running: boolean } & EntryProps) {
   switch (item.kind) {
@@ -171,9 +192,9 @@ function Entry({ item, last, running, ...props }: { item: Item; last: boolean; r
       );
     case "reply":
       return (
-        <p className="ide-msg">
-          <Rich text={item.text} />
-        </p>
+        <div className="ide-msg">
+          <Markdown text={item.text} />
+        </div>
       );
     case "plan":
       return (
@@ -257,6 +278,8 @@ function Entry({ item, last, running, ...props }: { item: Item; last: boolean; r
           onApply={props.onApply}
           canApprove={props.canApprove}
           onApprove={props.onApprove}
+          onOpenFile={props.onOpenFile}
+          local={props.local}
         />
       );
   }
@@ -316,8 +339,10 @@ const typingSomewhere = () => {
 // Esc belongs to whatever runs in a terminal, such as vim.
 const inTerminal = () => !!document.activeElement?.closest(".xterm");
 
-export function Chat({ active, header, status, jump, onJumped, view, model, onSend, onSlash, onShell, onCancel, ...props }: Props) {
+export function Chat({ active, header, status, jump, onJumped, view, workspace, picker, onSend, onSlash, onShell, onCancel, ...props }: Props) {
   const [text, setText] = useState("");
+  const [pane, setPane] = useState<"chat" | "console">("chat");
+  const tabsId = useId();
   const inputId = useId();
   const [mode, setMode] = useState<Mode>("build");
   const end = useRef<HTMLDivElement>(null);
@@ -356,6 +381,18 @@ export function Chat({ active, header, status, jump, onJumped, view, model, onSe
   }, [text]);
 
   useEffect(() => {
+    const hear = (e: Event) => {
+      const { workspace: target, text: next } = (e as CustomEvent<{ workspace: string; text: string }>).detail;
+      if (target !== workspace) return;
+      setPane("chat");
+      setText(next);
+      input.current?.focus();
+    };
+    window.addEventListener(PROMPT_EVENT, hear);
+    return () => window.removeEventListener(PROMPT_EVENT, hear);
+  }, [workspace]);
+
+  useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -376,10 +413,37 @@ export function Chat({ active, header, status, jump, onJumped, view, model, onSe
     <aside className="ide-chat" aria-label={IDE.chat.label}>
       <div className="ide-chat__head">
         {header}
+        <div className="ide-chat__tabs" role="tablist" aria-label={IDE.chat.label}>
+          {(["chat", "console"] as const).map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="tab"
+              id={`${tabsId}-${name}`}
+              aria-selected={pane === name}
+              aria-controls={`${tabsId}-${name}-panel`}
+              onClick={() => setPane(name)}
+            >
+              {name === "chat" ? IDE.console.chat : IDE.console.tab}
+            </button>
+          ))}
+        </div>
         {status}
         {props.claim ? <p className="ide-chat__claim">{props.claim}</p> : null}
       </div>
-      <div ref={log} className="ide-chat__log" role="log" aria-live="polite">
+      {pane === "console" ? (
+        <div className="ide-chat__log" role="tabpanel" id={`${tabsId}-console-panel`} aria-labelledby={`${tabsId}-console`}>
+          <ConsoleLog lines={view.console} busy={view.busy} />
+        </div>
+      ) : null}
+      <div
+        ref={log}
+        className="ide-chat__log"
+        role="log"
+        aria-live="polite"
+        id={`${tabsId}-chat-panel`}
+        hidden={pane !== "chat"}
+      >
         {view.items.length === 0 ? (
           <Welcome
             onPick={(name) => {
@@ -432,9 +496,7 @@ export function Chat({ active, header, status, jump, onJumped, view, model, onSe
                 </button>
               ))}
             </div>
-            <span className="ide-prompt__model" title={`${IDE.chat.modelNow}: ${model}`}>
-              {prettyModel(model)}
-            </span>
+            {picker}
             {view.busy ? (
               <button type="button" className="ide-prompt__send" aria-label={IDE.chat.stop} title={IDE.chat.stop} onClick={onCancel}>
                 <Stop size={14} weight="fill" aria-hidden="true" />

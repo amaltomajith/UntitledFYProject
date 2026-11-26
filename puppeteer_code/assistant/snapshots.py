@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -20,6 +22,7 @@ from puppeteer_code.workspace import GIT_IDENTITY, IGNORE_DIRS
 
 # dist, build and env stay in: the assistant can write there, and Undo has to cover it.
 SKIP = sorted(IGNORE_DIRS - {"dist", "build", "env"}) + [".env", ".env.*", "*.pem", "*.key", "*.pyc"]
+_INIT_LOCK = threading.Lock()
 
 
 def pcode_home() -> Path:
@@ -36,14 +39,28 @@ class Snapshots:
     def __init__(self, project: str | Path, home: Optional[Path] = None):
         self.project = Path(project).resolve()
         self.git_dir = project_folder(self.project, home) / "git"
-        if not (self.git_dir / "HEAD").exists():
-            self.git_dir.parent.mkdir(parents=True, exist_ok=True)
-            self._git("init", "--quiet", "--initial-branch=main")
+        self._init()
         exclude = self.git_dir / "info" / "exclude"
         exclude.parent.mkdir(parents=True, exist_ok=True)
         exclude.write_text("\n".join(SKIP) + "\n", encoding="utf-8")
         # Beats any .gitattributes in the project, so Undo restores exact bytes.
         (exclude.parent / "attributes").write_text("* -text -filter -ident\n", encoding="utf-8")
+
+    def _init(self) -> None:
+        """Two git inits on one folder fail on each other's template files, so this process makes one at a time.
+        Another process can still race it: then the store is there afterwards, or a second init fills in the rest."""
+        with _INIT_LOCK:
+            for attempt in range(2):
+                if (self.git_dir / "HEAD").exists():
+                    return
+                self.git_dir.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    self._git("init", "--quiet", "--initial-branch=main")
+                    return
+                except RuntimeError:
+                    if attempt:
+                        raise
+                    time.sleep(0.5)
 
     def _git(self, *args: str, check: bool = True, text: bool = True) -> str:
         cmd = ["git", f"--git-dir={self.git_dir}", f"--work-tree={self.project}",

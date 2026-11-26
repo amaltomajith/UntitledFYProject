@@ -352,7 +352,8 @@ puppeteer-plus/
   - `QUALITY` = `openai/gpt-oss-120b`
 - **`OpenAICompatClient`**: wraps the OpenAI SDK for any OpenAI-compatible endpoint.
   `GroqClient` (`GROQ_API_KEY`) and `NebiusClient` (`NEBIUS_API_KEY`, Nebius Token
-  Factory) are thin subclasses.
+  Factory) are thin subclasses, as are the OpenAI, Gemini and OpenRouter clients that
+  Puppeteer-Code added. Anthropic uses its own SDK (`puppeteer_code/anthropic_client.py`).
   - Retries rate-limit errors with exponential back-off (2 s, 4 s, 8 s).
   - Retries connection errors and 5xx server errors.
   - TLS is always verified. With `truststore` installed it uses the OS certificate store
@@ -644,8 +645,9 @@ never updated this way: use `git pull`.
 builds the site, bundles it into the wheel (`scripts/build_release.py`), smoke-tests the wheel in a clean venv, and
 publishes the wheel, `SHA256SUMS` and both installers as a GitHub Release.
 
-**From source (developers).** Python 3.10+, and a key: Nebius Token Factory, or a free Groq key from
-<https://console.groq.com>.
+**From source (developers).** Python 3.10+, and either a key (Nebius Token Factory, Groq, OpenAI, Anthropic,
+Gemini or OpenRouter; Groq has a free tier at <https://console.groq.com>) or a model on your own computer
+through Ollama, which the IDE's first screen sets up. Only Nebius and Groq have been run with real keys.
 
 ```bash
 python -m venv .venv
@@ -816,6 +818,7 @@ At the end it prints a **verified diff**. Your files are only changed if you pas
 ```bash
 pip install -r requirements.txt        # or: pip install -e .   (gives the `pcode` command)
 # .env:  NEBIUS_API_KEY=...            (runs NVIDIA Nemotron; GROQ_API_KEY also works with --provider groq)
+#        the assistant also takes OPENAI_, ANTHROPIC_, GEMINI_ or OPENROUTER_API_KEY, or --private (Ollama)
 
 python -m puppeteer_code models                         # live catalog + which tier models resolve
 python -m puppeteer_code fix "mean() is wrong for even lists" --repo path/to/repo

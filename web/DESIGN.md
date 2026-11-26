@@ -74,9 +74,15 @@ Scene colours mirror these by hand: `BODY` and the face gradient in `AgentTiles.
   tab line, changed-file and unsaved marks, inline code, warnings (which keep their glyph and words).
   `--select` is the selection tint. Syntax colours are `--syn-*`. Never write a colour in an `ide` rule; add a
   token. ANSI colours in `terminal/store.ts` are the exception: programs give them a meaning, so yellow stays yellow.
-- Type: Geist for the workbench and chat, as on the landing page. Geist Mono only for the editor, terminals and code.
-- Shape: sharp like the rest of the site. The one exception is the agent panel: the prompt card and message
-  bubbles use `--r-chat` (10px).
+- Type: Geist for the workbench and chat, as on the landing page. Geist Mono for the editor, terminals and code, and
+  for **code-style labels** (`.ide-label`): section names, panel and chat tabs, written like the code they describe
+  (`workspace.open("app")`, `Console.log`). The active tab has a 2px `--accent-hi` underline.
+- Shape: sharp like the rest of the site, with two documented exceptions. The agent panel (prompt card, message
+  bubbles, model picker, palette) uses `--r-chat` (10px). The floating run pill (`RunPill.tsx`) and the picker's
+  provider chips use `--r-pill`. Nothing else is rounded.
+- **Gradient depth** only behind the start page and the lead first-run choice: two soft radial glows from
+  `--depth-glow` and `--depth-glow-2`, flat `--bg` under `prefers-reduced-transparency`. Never on panels or text.
+- Shadows and the palette's scrim use `--shade` and `--scrim`; floating things only (picker, palette, pill).
 - Icons: codicons (`Codicon.tsx`) for the workbench. File and folder logos are a Material Icon Theme subset in
   `public/file-icons/`, with the name map in `lib/fileIcons.json`. `web/scripts/file-icons.mjs` regenerates both, and
   the result is committed, so the Next build has no extra step. Unknown files get the generic icon.
@@ -93,7 +99,21 @@ Scene colours mirror these by hand: `BODY` and the face gradient in `AgentTiles.
 - **Live tab** (`LiveView.tsx`): the work so far on the left, code on the right. The wording stays true: quiet is "No output
   for 1m 20s. The model may still be working.", never "stuck". Private shows a reply's code when it finishes, because
   Ollama holds tool calls back, and the tab says so. Added and removed lines keep their `+` and `-` signs.
-- The prompt shows the current model as plain text. The picker waits for the owner's plan for the AI part.
+- **Model picker** (`ModelPicker.tsx`): the model name in the prompt card is a button. It lists providers that have a
+  key, plus Local, with the live catalog and prices where known (blank otherwise, and "price unknown" in Settings;
+  never a guess). It is disabled during a request. "Manage" opens Settings.
+- **Settings** (`Settings.tsx`) opens as an editor tab from the gear at the bottom of the activity bar or Ctrl+,.
+  Keys are never shown back, only "ends in ab12".
+- **Command palette** (`CommandPalette.tsx`): Ctrl+P files, Ctrl+Shift+P (or a leading `>`) commands, and the top bar
+  box opens it. Its commands come from `IDE.commands.list`, so the two never drift.
+- **Start page** (`StartPage.tsx`) fills the empty editor: model status with a link to fix it, starter requests that
+  only fill the prompt (nothing is sent), shortcuts.
+- **Console.log** (`ConsoleLog.tsx`) is the agent panel's second tab: numbered mono lines written by `consoleLine()` in
+  `lib/ide.ts` from the engine's own events. Never a line the engine did not send.
+- **Run pill** floats over the editor: during a request, agent, phase, time, Live and Stop; after one, files changed
+  with Review and Undo until dismissed. Only real state.
+- **Private downloads**: a model is downloaded only when the user clicks it in first run or Settings, never during a
+  request. The wording is "Downloading the model from ollama.com. Your code is not sent." Never "no data leaves".
 - Slash commands live in `IDE.commands.list` in `lib/content.ts`, chat only, because a real shell owns its keyboard.
   One with a `prompt` is a premade request to the assistant; the rest run in `components/ide/useCommands.ts` and
   spend no tokens. `components/ide/Slash.tsx` holds the menu and the Up arrow history.

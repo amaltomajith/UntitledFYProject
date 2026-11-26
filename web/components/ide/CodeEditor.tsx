@@ -13,6 +13,7 @@ import { unifiedMergeView } from "@codemirror/merge";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { useEditorPrefs, type EditorPrefs } from "@/lib/editorPrefs";
 
 const highlight = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword, tags.modifier], color: "var(--syn-keyword)" },
@@ -27,7 +28,7 @@ const highlight = HighlightStyle.define([
 
 const theme = EditorView.theme(
   {
-    "&": { height: "100%", fontSize: "13px", backgroundColor: "transparent", color: "var(--ink)" },
+    "&": { height: "100%", fontSize: "var(--editor-size, 13px)", backgroundColor: "transparent", color: "var(--ink)" },
     ".cm-scroller": { fontFamily: "var(--f-mono)", lineHeight: "1.6", overflow: "auto" },
     ".cm-content": { caretColor: "var(--ink)", paddingBlock: "10px" },
     ".cm-gutters": { backgroundColor: "transparent", color: "var(--ink-3)", border: "none" },
@@ -83,6 +84,8 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave, re
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const lock = useRef(new Compartment());
+  const wrapping = useRef(new Compartment());
+  const prefs = useEditorPrefs();
   const handlers = useRef({ onChange, onSave });
   handlers.current = { onChange, onSave };
   const crlf = useRef(false);
@@ -96,6 +99,7 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave, re
         extensions: [
           ...base(path),
           lock.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
+          wrapping.current.of(prefs.wrap ? EditorView.lineWrapping : []),
           keymap.of([
             { key: "Mod-s", preventDefault: true, run: () => (handlers.current.onSave(), true) },
             ...defaultKeymap,
@@ -131,6 +135,10 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave, re
   }, [readOnly]);
 
   useEffect(() => {
+    view.current?.dispatch({ effects: wrapping.current.reconfigure(prefs.wrap ? EditorView.lineWrapping : []) });
+  }, [prefs.wrap]);
+
+  useEffect(() => {
     const editor = view.current;
     if (!editor || !reveal) return;
     const { doc } = editor.state;
@@ -140,11 +148,14 @@ export default function CodeEditor({ path, value, readOnly, onChange, onSave, re
     editor.focus();
   }, [reveal]);
 
-  return <div ref={host} className="ide-code" />;
+  return <div ref={host} className="ide-code" style={sized(prefs)} />;
 }
+
+const sized = (prefs: EditorPrefs) => ({ ["--editor-size" as string]: `${prefs.fontSize}px` });
 
 export function DiffEditor({ path, before, after }: { path: string; before: string; after: string }) {
   const host = useRef<HTMLDivElement>(null);
+  const prefs = useEditorPrefs();
 
   useEffect(() => {
     const editor = new EditorView({
@@ -163,5 +174,5 @@ export function DiffEditor({ path, before, after }: { path: string; before: stri
     return () => editor.destroy();
   }, [path, before, after]);
 
-  return <div ref={host} className="ide-code" />;
+  return <div ref={host} className="ide-code" style={sized(prefs)} />;
 }

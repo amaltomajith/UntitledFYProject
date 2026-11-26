@@ -666,7 +666,7 @@ def test_keys_are_saved_loaded_and_never_returned(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     assert pick_provider() is None
     save_key("groq", "gsk_abcdefgh", tmp_path)
-    assert key_status() == {"nebius": False, "groq": True}
+    assert key_status() == {**{provider: False for provider in PROVIDER_KEYS}, "groq": True}
     assert pick_provider() == "groq"
     monkeypatch.delenv("GROQ_API_KEY")
     load_keys(tmp_path)
@@ -1557,3 +1557,27 @@ def test_ide_git_never_runs_a_command_from_the_repos_config(tmp_path):
     (project / "a.py").write_text("2\n")
     client.get("/api/ide/git", headers=AUTH)
     assert not (project / "ran.txt").exists()
+
+
+def test_many_snapshot_stores_for_one_folder_at_once(tmp_path):
+    """Two opens of one folder ran git init together, and the loser failed on a template file that now existed."""
+    import threading
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "a.txt").write_text("a")
+    errors = []
+
+    def make():
+        try:
+            Snapshots(project, tmp_path / "home")
+        except Exception as e:      # noqa: BLE001 - the test reports any failure
+            errors.append(e)
+
+    threads = [threading.Thread(target=make) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert Snapshots(project, tmp_path / "home").snapshot("one")

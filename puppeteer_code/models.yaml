@@ -44,8 +44,49 @@ providers:
         - openai/gpt-oss-120b
     prices: {}
 
+  # Tier candidates for the four below were checked against each provider's docs on 2026-11-05.
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    tiers:
+      fast: [gpt-6-luna, gpt-6.1-terra]
+      quality: [gpt-6.1-sol, gpt-6-astra]
+    prices:
+      gpt-6-luna: [0.10, 0.50]
+      gpt-6.1-sol: [2.00, 10.00]
+
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    tiers:
+      fast: [claude-haiku-5-5]
+      quality: [claude-opus-5-5]
+    prices:
+      claude-haiku-5-5: [0.10, 0.50]
+      claude-opus-5-5: [4.00, 20.00]
+
+  # Gemini's prices are introductory and change on set dates, so they stay unknown here rather than go stale.
+  # gemini-3.8-flash has a free tier.
+  gemini:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key_env: GEMINI_API_KEY
+    tiers:
+      fast: [gemini-3.5-flash-lite, gemini-3.1-flash-lite]
+      quality: [gemini-3.8-flash, gemini-3.6-flash]
+    prices: {}
+
+  # OpenRouter serves many vendors' models; prices are read from its live catalog.
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    tiers:
+      fast: [google/gemini-3.5-flash-lite, openai/gpt-oss-20b]
+      quality: [anthropic/claude-opus-5-5, google/gemini-3.8-flash, openai/gpt-oss-120b]
+    prices: {}
+    prices_from_catalog: true
+
   # Private mode. One model in both tiers, because swapping models costs a full reload.
-  # The first installed candidate is used, else any installed model. Nothing is ever pulled.
+  # The model chosen in setup or Settings is used first, then the first installed candidate, else any
+  # installed model. A model is downloaded only when the user clicks Download there, never during a request.
   local:
     base_url: http://127.0.0.1:11435
     private: true

@@ -23,3 +23,9 @@ refs/
 
 # The IDE page bundled into the wheel by scripts/build_release.py, only while building
 puppeteer_code/site/
+
+# local secrets (env files live in F:\Personal\env-vault)
+.env
+.env.*
+!.env.example
+!.env.*.example

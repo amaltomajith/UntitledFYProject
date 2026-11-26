@@ -34,7 +34,8 @@ try:
 except ImportError:
     pass
 
-from core.agent import NebiusClient, GroqClient, OpenAICompatClient
+from core.agent import (NebiusClient, GroqClient, GeminiClient, OpenAIClient, OpenAICompatClient,
+                        OpenRouterClient)
 from puppeteer_code.privacy import PrivacyError
 
 logger = logging.getLogger(__name__)
@@ -253,8 +254,10 @@ class ProviderSession:
         cache_dir: Optional[str | Path] = None,
         config: Optional[dict] = None,
         resolve: bool = True,
+        home: Optional[Path] = None,
     ):
         self.config = config or load_config()
+        self.home = home        # where the chosen local model is kept; None means ~/.pcode
         self.provider = provider or self.config.get("default_provider", "nebius")
         spec = self.config["providers"][self.provider]
         self.spec = spec
@@ -270,6 +273,14 @@ class ProviderSession:
         self.client = MeteredClient(raw, self.meter)
 
         self.tiers = self._resolve_tiers(spec, raw if resolve else None)
+        # Anthropic binds each reply's thinking to the exact history before it, so history is only appended to.
+        self.append_only = self.provider == "anthropic"
+        source = getattr(raw, "inner", raw)
+        if resolve and spec.get("prices_from_catalog") and hasattr(source, "catalog_prices"):
+            try:
+                self.meter.prices = {**source.catalog_prices(), **self.meter.prices}
+            except Exception as e:   # offline or bad key: cost stays unknown, never guessed
+                logger.warning("Could not read prices for %s (%s).", self.provider, e)
         self.agent_settings = {
             name: AgentSettings(**vals) for name, vals in (self.config.get("agents") or {}).items()
         }
@@ -282,10 +293,13 @@ class ProviderSession:
             server = shared_server(spec)
             self.notices += server.warnings()
             return OllamaClient(server.url, spec.get("num_ctx", 16384), spec.get("keep_alive", "10m"))
-        if self.provider == "nebius":
-            return NebiusClient(base_url=spec.get("base_url"), api_key_env=spec.get("api_key_env"))
-        if self.provider == "groq":
-            return GroqClient(base_url=spec.get("base_url"), api_key_env=spec.get("api_key_env"))
+        if self.provider == "anthropic":
+            from puppeteer_code.anthropic_client import AnthropicClient
+            return AnthropicClient(api_key_env=spec.get("api_key_env"), base_url=spec.get("base_url"))
+        classes = {"nebius": NebiusClient, "groq": GroqClient, "openai": OpenAIClient,
+                   "gemini": GeminiClient, "openrouter": OpenRouterClient}
+        if self.provider in classes:
+            return classes[self.provider](base_url=spec.get("base_url"), api_key_env=spec.get("api_key_env"))
         return OpenAICompatClient(base_url=spec["base_url"], api_key_env=spec["api_key_env"])
 
     def _resolve_tiers(self, spec: dict, client) -> dict[str, str]:
@@ -312,12 +326,20 @@ class ProviderSession:
             resolved[tier] = choice
         return resolved
 
-    @staticmethod
-    def _local_tiers(spec: dict, client) -> dict[str, str]:
+    def _local_tiers(self, spec: dict, client) -> dict[str, str]:
+        """The model chosen in setup or Settings first, then the configured order, then anything installed."""
+        from puppeteer_code.assistant.snapshots import pcode_home
+        from puppeteer_code.local_models import chosen
+        from puppeteer_code.privacy import full_name
+
         installed = client.list_models()
-        choice = next((m for m in spec["tiers"]["quality"] if m in installed), None) or next(iter(installed), None)
+        picked = chosen(self.home or pcode_home())
+        order = ([picked] if picked else []) + list(spec["tiers"]["quality"])
+        choice = next((m for m in order if m in installed or full_name(m) in installed), None)
+        choice = choice or next(iter(installed), None)
         if choice is None:
-            raise PrivacyError(f"No local model is installed. Run: ollama pull {spec['tiers']['quality'][0]}")
+            raise PrivacyError("No local model is installed. Download one in the IDE's Settings, under Private, "
+                               f"or run: ollama pull {spec['tiers']['quality'][0]}")
         return {"fast": choice, "quality": choice}
 
     # ── per-agent helpers ────────────────────────────────────────────────────
@@ -348,6 +370,31 @@ class ProviderSession:
                 rows.append({"tier": tier, "model": c, "served": c in available,
                              "selected": self.tiers.get(tier) == c})
         return rows
+
+    def catalog(self) -> list[dict]:
+        """For the model picker: every model served, with a price where one is known (else None, never a guess)."""
+        models = sorted(set(self.client.list_models()) | set(self.tiers.values()))
+        return [{"id": m, "price": self.meter.prices.get(m)} for m in models]
+
+
+def check_key(provider: str, config: Optional[dict] = None, timeout: float = 20.0) -> int:
+    """How many models a provider's key can see. Raises RuntimeError with a scrubbed reason when it cannot."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as Late
+    from puppeteer_code.workspace import scrub
+
+    def count() -> int:
+        session = ProviderSession(provider, config=config, resolve=False)
+        return len(session.client.list_models())
+
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(count).result(timeout=timeout)
+    except Late:
+        raise RuntimeError(f"No answer from {provider} within {int(timeout)} s.")
+    except Exception as e:      # a bad key, no network, a missing SDK
+        raise RuntimeError(scrub(str(e))[:300] or type(e).__name__) from None
+    finally:
+        pool.shutdown(wait=False)
 
 
 __all__ = [
